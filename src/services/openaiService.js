@@ -1,4 +1,56 @@
+import * as FileSystem from 'expo-file-system/legacy';
 import { OPENAI_API_KEY } from '../config';
+import { FOOD_DATABASE } from '../utils/foodDatabase';
+
+// ── Offline estimator ────────────────────────────────────────────────────────
+// Works WITHOUT an OpenAI key: matches the typed description against the local
+// food database and sums protein/calories. Used as a fallback so meal logging
+// (and protein/calorie totals) still works when AI is unavailable.
+function estimateMealOffline(description, isTr) {
+  const text = String(description || '').toLowerCase();
+  const matched = [];
+  let protein = 0;
+  let calories = 0;
+  for (const f of FOOD_DATABASE) {
+    const en = String(f.name || '').toLowerCase();
+    const tr = String(f.nameTr || '').toLowerCase();
+    if ((en && text.includes(en)) || (tr && text.includes(tr))) {
+      protein += Number(f.protein) || 0;
+      calories += Number(f.calories) || 0;
+      matched.push(isTr ? (f.nameTr || f.name) : f.name);
+    }
+  }
+  if (matched.length === 0) {
+    return {
+      protein: 0,
+      foodType: isTr ? 'Tanınamadı' : 'Not recognized',
+      portionSize: isTr ? 'Orta' : 'Medium',
+      calories: 0,
+      sufficient: false,
+      suggestion: isTr
+        ? 'Yemeği daha açık yazın (ör. "150g tavuk göğsü, 1 yumurta").'
+        : 'Describe the food more specifically (e.g. "150g chicken breast, 1 egg").',
+      muscleScore: 'C',
+      qualityTags: [isTr ? 'Çevrimdışı tahmin' : 'Offline estimate'],
+      smartSwap: null,
+      offline: true,
+    };
+  }
+  return {
+    protein,
+    calories,
+    foodType: matched.join(' + '),
+    portionSize: isTr ? 'Orta' : 'Medium',
+    sufficient: protein >= 25,
+    suggestion: isTr
+      ? 'Yaklaşık değerler (çevrimdışı tahmin). Daha hassas analiz için yapay zekâ anahtarı ekleyin.'
+      : 'Approximate values (offline estimate). Add an AI key for precise analysis.',
+    muscleScore: protein >= 30 ? 'A' : protein >= 20 ? 'B' : 'C',
+    qualityTags: [isTr ? 'Çevrimdışı tahmin' : 'Offline estimate'],
+    smartSwap: null,
+    offline: true,
+  };
+}
 
 function extractJSON(text) {
   const match = text.match(/\{[\s\S]*\}/);
@@ -26,18 +78,30 @@ function buildResult(parsed, isTr) {
 }
 
 async function imageUriToBase64(uri) {
-  const response = await fetch(uri);
-  const blob = await response.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
+  // React-Native-correct: read the local file as base64 via expo-file-system.
+  // (fetch(uri).blob() + FileReader is unreliable for file:// URIs in RN/Expo.)
+  return await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
   });
+}
+
+// Clear, localized error when the OpenAI key isn't configured (instead of a
+// cryptic 401 "analysis error"). Add OPENAI_API_KEY to a .env file (see
+// .env.example) and restart `expo start` to enable AI features.
+// Photo analysis needs vision AI — there is no offline path for an image.
+function assertApiKeyForPhoto(isTr) {
+  if (!OPENAI_API_KEY) {
+    throw new Error(
+      isTr
+        ? 'Fotoğraf analizi için yapay zekâ anahtarı gerekiyor. Şimdilik yemeği "Manuel Ekle" ile yazabilirsiniz — protein ve kalori otomatik tahmin edilir.'
+        : 'Photo analysis needs an AI key. For now, use "Add manually" to type the meal — protein and calories are estimated automatically.'
+    );
+  }
 }
 
 export async function analyzeMealWithAI(imageUri, language = 'en') {
   const isTr = language === 'tr';
+  assertApiKeyForPhoto(isTr);
 
   const prompt = isTr
     ? `Sen bir beslenme uzmanısın. Bu yemek fotoğrafını dikkatlice analiz et.
@@ -148,6 +212,8 @@ Rules:
 
 export async function analyzeMealWithText(description, language = 'en') {
   const isTr = language === 'tr';
+  // No AI key → estimate from the local food database (still returns protein/calories).
+  if (!OPENAI_API_KEY) return estimateMealOffline(description, isTr);
 
   const prompt = isTr
     ? `Sen bir beslenme uzmanısın. Kullanıcının tarif ettiği yemeği analiz et.
@@ -201,35 +267,30 @@ Rules:
 - proteinScore: "A+" (>30g, <600 kcal), "A" (25-30g), "B" (15-25g), "C" (<15g), "D" (ultra-processed)
 - qualityTags: 2-3 short tags`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      max_tokens: 500,
-      temperature: 0,
-      response_format: { type: 'json_object' },
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenAI API error: ${response.status} — ${err}`);
-  }
-
-  const data = await response.json();
-  const raw = data.choices[0].message.content.trim();
   try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        max_tokens: 500,
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!response.ok) throw new Error(`OpenAI API error: ${response.status}`);
+
+    const data = await response.json();
+    const raw = data.choices[0].message.content.trim();
     return buildResult(extractJSON(raw), isTr);
   } catch {
-    throw new Error(
-      isTr
-        ? 'Yemek analiz edilemedi. Lütfen tekrar deneyin.'
-        : 'Could not analyze meal. Please try again.'
-    );
+    // AI failed (network / quota / parse) → fall back to the offline estimate
+    // so the user still gets protein & calories.
+    return estimateMealOffline(description, isTr);
   }
 }

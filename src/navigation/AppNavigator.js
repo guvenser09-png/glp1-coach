@@ -13,12 +13,13 @@ import LoginScreen from '../screens/auth/LoginScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import MealAnalysisScreen from '../screens/MealAnalysisScreen';
-import WeeklyReportScreen from '../screens/WeeklyReportScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import DietPlansScreen from '../screens/DietPlansScreen';
 import MedicationScreen from '../screens/MedicationScreen';
 import SocialScreen from '../screens/SocialScreen';
 import HealthLogScreen from '../screens/HealthLogScreen';
+import WeightScreen from '../screens/WeightScreen';
+import RewardsScreen from '../screens/RewardsScreen';
 import { useLanguage } from '../context/LanguageContext';
 import { theme } from '../theme';
 
@@ -70,9 +71,7 @@ function MainTabs() {
           if (route.name === 'Dashboard') {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'MealAnalysis') {
-            iconName = focused ? 'fitness' : 'fitness-outline';
-          } else if (route.name === 'WeeklyReport') {
-            iconName = focused ? 'bar-chart' : 'bar-chart-outline';
+            iconName = focused ? 'today' : 'today-outline';
           } else if (route.name === 'Social') {
             iconName = focused ? 'people' : 'people-outline';
           } else if (route.name === 'DietPlans') {
@@ -93,12 +92,7 @@ function MainTabs() {
       <Tab.Screen
         name="MealAnalysis"
         component={MealAnalysisScreen}
-        options={{ tabBarLabel: isTr ? 'Günlük Takip' : 'Daily Log' }}
-      />
-      <Tab.Screen
-        name="WeeklyReport"
-        component={WeeklyReportScreen}
-        options={{ tabBarLabel: t('weeklyReport') }}
+        options={{ tabBarLabel: isTr ? 'Günlük' : 'Daily' }}
       />
       <Tab.Screen
         name="Social"
@@ -127,6 +121,8 @@ function MainAppStack() {
       <Stack.Screen name="Tabs" component={MainTabs} />
       <Stack.Screen name="Medication" component={MedicationScreen} />
       <Stack.Screen name="HealthLog" component={HealthLogScreen} />
+      <Stack.Screen name="Weight" component={WeightScreen} />
+      <Stack.Screen name="Rewards" component={RewardsScreen} />
     </Stack.Navigator>
   );
 }

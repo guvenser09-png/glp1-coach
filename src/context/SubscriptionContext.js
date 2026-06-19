@@ -4,9 +4,24 @@
 // restore, or server-side subscription change without requiring an app restart.
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import Purchases, { LOG_LEVEL, PURCHASES_ERROR_CODE } from 'react-native-purchases';
 import { Platform, Linking } from 'react-native';
 import { REVENUECAT_API_KEY } from '../config';
+
+// react-native-purchases is a native module that is NOT present in Expo Go.
+// The paywall is removed and RevenueCat is dormant, so we lazily/guardedly load
+// it: in Expo Go (or any build without the native module) Purchases stays null
+// and the app boots normally instead of crashing on a missing native module.
+let Purchases = null;
+let LOG_LEVEL = {};
+let PURCHASES_ERROR_CODE = {};
+try {
+  const mod = require('react-native-purchases');
+  Purchases = mod.default ?? mod;
+  LOG_LEVEL = mod.LOG_LEVEL ?? {};
+  PURCHASES_ERROR_CODE = mod.PURCHASES_ERROR_CODE ?? {};
+} catch (e) {
+  // Native module unavailable (Expo Go / not built) — RevenueCat stays dormant.
+}
 
 const ENTITLEMENT_KEY = 'premium';
 
@@ -42,7 +57,7 @@ export function SubscriptionProvider({ children }) {
     // RevenueCat is dormant: only configure when an API key is actually present,
     // so an empty key never triggers startup errors. Re-enabling the paywall
     // later just needs the key set in app config.
-    if (!REVENUECAT_API_KEY) {
+    if (!REVENUECAT_API_KEY || !Purchases) {
       setIsLoaded(true);
       return;
     }
@@ -114,6 +129,7 @@ export function SubscriptionProvider({ children }) {
   // Returns true on success, false on user cancel. Throws on other errors
   // so the caller (PaywallScreen) can show specific error messages.
   const subscribe = useCallback(async (packageToPurchase) => {
+    if (!Purchases) return false;
     try {
       const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
       // Apply immediately from purchase response
@@ -132,6 +148,7 @@ export function SubscriptionProvider({ children }) {
   // ── Restore purchases ──────────────────────────────────────────────────────
   // Returns true only if an active 'premium' entitlement is found after restore.
   const restorePurchases = useCallback(async () => {
+    if (!Purchases) return false;
     try {
       const info = await Purchases.restorePurchases();
       applyCustomerInfo(info);
@@ -148,6 +165,7 @@ export function SubscriptionProvider({ children }) {
 
   // ── Force refresh (e.g. after app comes back to foreground) ───────────────
   const refreshCustomerInfo = useCallback(async () => {
+    if (!Purchases) return;
     try {
       const info = await Purchases.getCustomerInfo();
       applyCustomerInfo(info);

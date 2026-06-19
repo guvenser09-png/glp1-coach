@@ -176,28 +176,65 @@ Your role:
 - Suggest protein sources when needed (chicken, eggs, yogurt, fish, lentils, etc.)
 - For any question about medical conditions, symptoms, or medical decisions, always respond with "I'd recommend consulting your doctor about this" before offering lifestyle tips`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      max_tokens: 150,
-      temperature: 0.8,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages,
-      ],
-    }),
-  });
+  // Context-based local reply used when there's no AI key or the request fails,
+  // so the coach never shows a scary "connection error" — it still helps.
+  const buildOfflineReply = () => {
+    const remaining = Math.max(0, proteinTarget - totalProtein);
+    const proteinFoods = isTr
+      ? 'tavuk, yumurta, yoğurt, balık ya da mercimek'
+      : 'chicken, eggs, yogurt, fish, or lentils';
+    const parts = [];
+    if (totalProtein >= proteinTarget) {
+      parts.push(isTr
+        ? `Bugün protein hedefini tutturdun (${totalProtein}/${proteinTarget}g) 💪 Harika gidiyorsun!`
+        : `You've hit your protein target today (${totalProtein}/${proteinTarget}g) 💪 Great work!`);
+    } else {
+      parts.push(isTr
+        ? `Bugün ${totalProtein}/${proteinTarget}g protein aldın — ${remaining}g kaldı. ${proteinFoods} ile tamamlayabilirsin.`
+        : `You're at ${totalProtein}/${proteinTarget}g protein today — ${remaining}g to go. Top it up with ${proteinFoods}.`);
+    }
+    if (isOffOrLeaving) {
+      parts.push(isTr
+        ? 'İlacı bıraktıktan sonra kiloyu korumanın anahtarı: yeterli protein + haftada 2–3 direnç antrenmanı.'
+        : 'After stopping the medication, the key to maintaining is adequate protein + 2–3 resistance workouts a week.');
+    } else if (glp1Status === 'currentlyUsing') {
+      parts.push(isTr
+        ? 'Doz artışı sürecinde kilo kaybı dalgalı olabilir; platolar normaldir, devam et.'
+        : 'Weight loss can be uneven during dose ramp-up; plateaus are normal — keep going.');
+    }
+    parts.push(isTr
+      ? '(Çevrimdışı yanıt — tam yapay zekâ koç için ayarlardan OpenAI anahtarı ekleyin.)'
+      : '(Offline reply — add an OpenAI key to enable the full AI coach.)');
+    return parts.join(' ');
+  };
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenAI error: ${response.status}`);
+  // No AI key → local reply instead of an error.
+  if (!OPENAI_API_KEY) return buildOfflineReply();
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        max_tokens: 150,
+        temperature: 0.8,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...messages,
+        ],
+      }),
+    });
+
+    if (!response.ok) throw new Error(`OpenAI error: ${response.status}`);
+
+    const data = await response.json();
+    return data.choices[0].message.content.trim();
+  } catch {
+    // Network / quota / parse failure → graceful local reply.
+    return buildOfflineReply();
   }
-
-  const data = await response.json();
-  return data.choices[0].message.content.trim();
 }

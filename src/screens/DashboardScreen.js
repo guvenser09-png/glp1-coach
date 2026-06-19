@@ -23,8 +23,6 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useUnit } from '../context/UnitContext';
 import CoachMessage from '../components/CoachMessage';
-import WeightChart from '../components/WeightChart';
-import DailyQuestsCard from '../components/DailyQuestsCard';
 import { useGamification } from '../context/GamificationContext';
 import FeatureTour from '../components/FeatureTour';
 import { sendCoachMessage } from '../services/coachChatService';
@@ -62,7 +60,6 @@ import { colors, semantic, spacing, radii, shadow, typography, fontFamily } from
 import {
   Card,
   GradientHero,
-  StatCard,
   PrimaryButton,
   ProgressBar,
   Ring,
@@ -792,39 +789,33 @@ export default function DashboardScreen({ navigation }) {
         </View>
 
         {/* ── Hero Card ── */}
-        <GradientHero style={styles.heroCard}>
-          <View style={styles.heroTop}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.heroGreeting}>
-                {greeting}, {displayName}! 💪
+        <GradientHero style={styles.heroCard} padding={spacing.stackLg}>
+          <Text style={styles.heroGreeting}>
+            {greeting}, {displayName} 👋
+          </Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Weight')} activeOpacity={0.8}>
+            {currentWeight != null ? (
+              <Text style={styles.heroWeight}>{formatWeight(currentWeight)}</Text>
+            ) : (
+              <Text style={styles.heroWeightEmpty}>
+                {isTr ? 'Henüz kilo girilmedi' : 'No weight logged yet'}
               </Text>
-              {currentWeight != null ? (
-                <Text style={styles.heroWeight}>{formatWeight(currentWeight)}</Text>
-              ) : (
-                <Text style={styles.heroWeightEmpty}>
-                  {isTr ? 'Kilo girilmedi' : 'No weight logged'}
-                </Text>
-              )}
-            </View>
-            <View style={styles.heroActions}>
-              <TouchableOpacity
-                style={styles.heroCoachBtn}
-                onPress={openCoachChat}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.heroCoachBtnEmoji}>🤖</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.heroLogBtn}
-                onPress={openLogWeight}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.heroLogBtnText}>{t('logWeight')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+            )}
+            <Text style={{ ...typography.labelSm, fontFamily: fontFamily.bodyMedium, color: 'rgba(255,255,255,0.85)', marginTop: 2 }}>
+              {isTr ? 'Kilo geçmişi & grafik ›' : 'Weight history & chart ›'}
+            </Text>
+          </TouchableOpacity>
+
           {dailyRate !== 0 && (
-            <View style={[styles.heroPill, { backgroundColor: dailyRate > 0 ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)', borderColor: dailyRate > 0 ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)' }]}>
+            <View
+              style={[
+                styles.heroPill,
+                {
+                  backgroundColor: dailyRate > 0 ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)',
+                  borderColor: dailyRate > 0 ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)',
+                },
+              ]}
+            >
               <Text style={[styles.heroPillText, { color: dailyRate > 0 ? '#6EE7B7' : '#FCA5A5' }]}>
                 {dailyRate > 0
                   ? `▼ ${formatWeight(dailyRate)}/${isTr ? 'gün' : 'day'}`
@@ -832,667 +823,137 @@ export default function DashboardScreen({ navigation }) {
               </Text>
             </View>
           )}
+
+          <View style={styles.heroActions}>
+            <TouchableOpacity
+              style={styles.heroActionBtn}
+              onPress={openCoachChat}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.heroActionEmoji}>🤖</Text>
+              <Text style={styles.heroActionText}>{isTr ? 'AI Koç' : 'AI Coach'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.heroActionBtn, styles.heroActionBtnSolid]}
+              onPress={() => setLogWeightVisible(true)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.heroActionEmoji}>＋</Text>
+              <Text style={[styles.heroActionText, styles.heroActionTextSolid]}>
+                {isTr ? 'Kilo Ekle' : 'Log Weight'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </GradientHero>
 
-        {/* ── Medication-free journey rebound alert (P0) ── */}
-        {medLoaded && showReboundAlert && (
-          <Card
-            padding={16}
-            style={[
-              styles.reboundCard,
-              {
-                backgroundColor: reboundAlert.alert === 'high' ? colors.dangerBg : colors.warningBg,
-                borderColor: reboundAlert.alert === 'high' ? '#FCA5A5' : '#FDE68A',
-              },
-            ]}
-          >
-            <View style={styles.reboundRow}>
-              <Text style={styles.reboundEmoji}>
-                {reboundAlert.alert === 'high' ? '🚨' : '⚠️'}
-              </Text>
+        {/* ── Compact Next Injection Card (only when actively using medication) ── */}
+        {medLoaded && medActive && (
+          <Card onPress={goToMedication} style={styles.medCard}>
+            <View style={styles.medRow}>
+              <View style={[styles.medIconCircle, { backgroundColor: semantic[medTone].bg }]}>
+                <Text style={styles.medIconEmoji}>💉</Text>
+              </View>
               <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.reboundTitle,
-                    { color: reboundAlert.alert === 'high' ? '#DC2626' : '#D97706' },
-                  ]}
-                >
-                  {isTr
-                    ? `Kilo yukarı yönlü — protein ve hareketi sıkılaştır`
-                    : `Weight trending up — tighten protein + movement`}
+                <Text style={styles.medTitle}>
+                  {isTr ? 'Sonraki enjeksiyon' : 'Next injection'}
                 </Text>
-                <Text style={styles.reboundDesc}>
-                  {isTr
-                    ? `En düşük kilonun ${formatWeight(reboundAlert.gainedKg)} üzerindesin. Bu çok normal ve geri dönülebilir 💚 Birkaç günlüğüne protein hedefine sıkı tutun ve günlük yürüyüşü artırın — bu küçük dalgalanmayı dengelemeye yardımcı olur.`
-                    : `You're ${formatWeight(reboundAlert.gainedKg)} above your lowest weight. This is completely normal and reversible 💚 Lock in your protein target for a few days and add a daily walk — that's usually enough to settle a small bounce.`}
+                <Text style={styles.medSub}>
+                  {medProfile?.drug || (isTr ? 'İlaç' : 'Medication')}
+                  {medProfile?.dose ? ` · ${medProfile.dose}` : ''}
                 </Text>
-                <TouchableOpacity style={styles.reboundBtn} onPress={openCoachChat}>
-                  <Text style={styles.reboundBtnText}>
-                    {isTr ? 'Koçtan plan al' : 'Get a plan from Coach'}
-                  </Text>
-                </TouchableOpacity>
               </View>
+              {nextInjectionLabel != null && (
+                <Badge label={nextInjectionLabel} tone={medTone} />
+              )}
             </View>
           </Card>
         )}
 
-        {/* ── Medication / Next Injection Summary ── */}
-        {medLoaded && (
-          medStopped ? (
-            <Card onPress={goToMedication} padding={16} style={styles.medCard}>
-              <View style={styles.medRow}>
-                <View style={[styles.medIconCircle, { backgroundColor: colors.successBg }]}>
-                  <Text style={styles.medIconEmoji}>🌱</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.medTitle}>
-                    {medPlanning
-                      ? (isTr ? 'İlaçsız yolculuğa hazırlık' : 'Preparing for your medication-free journey')
-                      : (isTr ? 'İlaçsız yolculuk' : 'Medication-free journey')}
-                  </Text>
-                  <Text style={styles.medSub}>
-                    {medPlanning
-                      ? (isTr
-                          ? 'Kas koruma + protein alışkanlığı bırakmayı kolaylaştırır'
-                          : 'Muscle maintenance + protein habits make stopping easier')
-                      : daysSinceStopped != null
-                        ? (isTr
-                            ? `${daysSinceStopped} gündür ilaçsız · sürdürme odağı`
-                            : `${daysSinceStopped} days medication-free · maintenance focus`)
-                        : (isTr
-                            ? 'Sürdürme odağı: protein + hareket'
-                            : 'Maintenance focus: protein + movement')}
-                  </Text>
-                </View>
-                {!medPlanning && daysSinceStopped != null && (
-                  <Badge
-                    label={isTr ? `${daysSinceStopped} gün` : `${daysSinceStopped}d`}
-                    tone="success"
-                  />
-                )}
-                {medPlanning && <Text style={styles.medChevron}>›</Text>}
-              </View>
-            </Card>
-          ) : medActive ? (
-            <Card onPress={goToMedication} padding={16} style={styles.medCard}>
-              <View style={styles.medRow}>
-                <View style={[styles.medIconCircle, { backgroundColor: semantic[medTone].bg }]}>
-                  <Text style={styles.medIconEmoji}>💉</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.medTitle}>
-                    {isTr ? 'Sonraki enjeksiyon' : 'Next injection'}
-                  </Text>
-                  <Text style={styles.medSub}>
-                    {medProfile?.drug || (isTr ? 'İlaç' : 'Medication')}
-                    {medProfile?.dose ? ` · ${medProfile.dose}` : ''}
-                  </Text>
-                </View>
-                {nextInjectionLabel != null && (
-                  <Badge label={nextInjectionLabel} tone={medTone} />
-                )}
-              </View>
-            </Card>
-          ) : (
-            <Card onPress={goToMedication} padding={16} style={styles.medCard}>
-              <View style={styles.medRow}>
-                <View style={[styles.medIconCircle, { backgroundColor: colors.infoBg }]}>
-                  <Text style={styles.medIconEmoji}>💊</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.medTitle}>
-                    {isTr ? 'İlaç takibini ayarla' : 'Set up medication tracking'}
-                  </Text>
-                  <Text style={styles.medSub}>
-                    {isTr
-                      ? 'Enjeksiyon günlerini ve hatırlatıcıları takip et'
-                      : 'Track your injection days and reminders'}
-                  </Text>
-                </View>
-                <Text style={styles.medChevron}>›</Text>
-              </View>
-            </Card>
-          )
-        )}
-
-        {/* ── Body Stats Row (Weight / Height) — always visible ── */}
-        <View style={styles.statCardsRow}>
-          <StatCard
-            style={styles.statCardItem}
-            icon={<Text style={styles.statEmoji}>⚖️</Text>}
-            label={isTr ? 'Kilo' : 'Weight'}
-            value={bmiWeight != null ? toDisplayWeight(bmiWeight) : '—'}
-            unit={bmiWeight != null ? weightUnit : undefined}
-          />
-          <StatCard
-            style={styles.statCardItem}
-            icon={<Text style={styles.statEmoji}>📏</Text>}
-            label={isTr ? 'Boy' : 'Height'}
-            value={bmiHeight != null ? formatHeight(bmiHeight) : '—'}
-          />
-        </View>
-
-        {/* ── Apple Watch / HealthKit Card (iOS only, hidden if unavailable) ── */}
-        {healthAvailable && healthData && (
-          <Card padding={16} style={styles.watchCard}>
-            <View style={styles.watchHeader}>
-              <Text style={styles.watchEmoji}>⌚️</Text>
-              <Text style={styles.watchTitle}>
-                {isTr ? 'Apple Watch' : 'Apple Watch'}
-              </Text>
-            </View>
-            <View style={styles.watchStatsRow}>
-              <View style={styles.watchStat}>
-                <Text style={styles.watchStatEmoji}>🔥</Text>
-                <Text style={styles.watchStatValue}>
-                  {healthData.activeEnergy != null ? healthData.activeEnergy : '—'}
-                  {healthData.activeEnergy != null && (
-                    <Text style={styles.watchStatUnit}> kcal</Text>
-                  )}
-                </Text>
-                <Text style={styles.watchStatLabel}>
-                  {isTr ? 'Bugün yakılan' : 'Burned today'}
-                </Text>
-              </View>
-              <View style={styles.watchStatDivider} />
-              <View style={styles.watchStat}>
-                <Text style={styles.watchStatEmoji}>❤️</Text>
-                <Text style={styles.watchStatValue}>
-                  {healthData.heartRate != null
-                    ? healthData.heartRate
-                    : healthData.restingHeartRate != null
-                      ? healthData.restingHeartRate
-                      : '—'}
-                  {(healthData.heartRate != null || healthData.restingHeartRate != null) && (
-                    <Text style={styles.watchStatUnit}> bpm</Text>
-                  )}
-                </Text>
-                <Text style={styles.watchStatLabel}>
-                  {healthData.heartRate != null
-                    ? (isTr ? 'Son nabız' : 'Latest HR')
-                    : (isTr ? 'Dinlenme nabzı' : 'Resting HR')}
-                </Text>
-              </View>
-            </View>
-            {healthData.heartRate != null && healthData.restingHeartRate != null && (
-              <Text style={styles.watchRestingLine}>
-                {isTr
-                  ? `❤️ Dinlenme nabzı: ${healthData.restingHeartRate} bpm`
-                  : `❤️ Resting heart rate: ${healthData.restingHeartRate} bpm`}
-              </Text>
-            )}
-          </Card>
-        )}
-
-        {/* ── Step Counter ── */}
+        {/* ── Compact Steps Card ── */}
         {stepCount !== null && (() => {
           const steps = stepCount;
           const goal = 10000;
-          const mid = 5000;
           const pct = Math.min(steps / goal, 1);
-          const barColor = steps >= goal ? '#10B981' : steps >= mid ? '#F59E0B' : '#EF4444';
-          const bgColor  = steps >= goal ? '#ECFDF5' : steps >= mid ? '#FFFBEB' : '#FEF2F2';
-          const emoji    = steps >= goal ? '🏆' : steps >= mid ? '👟' : '⚠️';
-          const message  = isTr
-            ? steps >= goal
-              ? `Günlük 10.000 adım hedefini tamamladın! Harika iş.`
-              : steps >= mid
-              ? `${steps.toLocaleString()} adım — hedefe ${(goal - steps).toLocaleString()} adım kaldı.`
-              : `Bugün ${steps.toLocaleString()} adım — 5.000 adım at, metabolizmanı destekle!`
-            : steps >= goal
-              ? `Daily 10,000 step goal completed! Great work.`
-              : steps >= mid
-              ? `${steps.toLocaleString()} steps — ${(goal - steps).toLocaleString()} more to reach your goal.`
-              : `${steps.toLocaleString()} steps today — aim for 5,000 to boost your metabolism!`;
-
+          const reached = steps >= goal;
+          const barColor = reached ? colors.success : colors.primary;
           return (
-            <View style={[styles.stepCard, { backgroundColor: bgColor }]}>
-              <View style={styles.stepCardTop}>
-                <Text style={styles.stepEmoji}>{emoji}</Text>
+            <Card style={styles.stepsCard}>
+              <View style={styles.stepsRow}>
+                <Text style={styles.stepsEmoji}>👟</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.stepCount, { color: barColor }]}>
+                  <Text style={styles.stepsLabel}>{isTr ? 'Adımlar' : 'Steps'}</Text>
+                  <Text style={styles.stepsValue}>
                     {steps.toLocaleString()}
-                    <Text style={styles.stepGoal}> / {goal.toLocaleString()} {isTr ? 'adım' : 'steps'}</Text>
+                    <Text style={styles.stepsGoal}> / {goal.toLocaleString()}</Text>
                   </Text>
-                  <Text style={styles.stepMsg}>{message}</Text>
                 </View>
+                {reached && <Text style={styles.stepsEmoji}>🏆</Text>}
               </View>
               <ProgressBar
                 progress={pct}
                 color={barColor}
-                trackColor="rgba(0,0,0,0.08)"
                 height={8}
+                style={styles.stepsBar}
               />
-            </View>
+            </Card>
           );
         })()}
 
-        {/* ── Protein Streak Mini-Banner ── */}
-        <View
-          style={[
-            styles.streakBanner,
-            { backgroundColor: proteinMet ? '#ECFDF5' : '#FFF7ED' },
-          ]}
-        >
-          <Text style={[styles.streakText, { color: proteinMet ? '#065F46' : '#92400E' }]}>
-            {proteinMet
-              ? isTr
-                ? '🔥 Bugün protein hedefinize ulaştınız!'
-                : '🔥 Protein target reached today!'
-              : isTr
-              ? `💪 Hedefe ulaşmak için ${remainingProtein}g daha protein`
-              : `💪 ${remainingProtein}g more protein to reach today's goal`}
-          </Text>
-        </View>
+        {/* ── Simple Daily Protein Goal Card ── */}
+        <Card style={styles.proteinCard}>
+          <View style={styles.proteinHeader}>
+            <Text style={styles.proteinTitle}>
+              {isTr ? 'Günlük Protein Hedefi' : 'Daily Protein Goal'}
+            </Text>
+            <Badge
+              label={proteinMet ? (isTr ? 'Tamam' : 'Met') : `${analyzedTodayProtein} / ${proteinTarget}g`}
+              tone={proteinMet ? 'success' : 'info'}
+            />
+          </View>
 
-        {/* ── Coach Message ── (always available — paywall removed) */}
+          <View style={styles.proteinBody}>
+            <Ring
+              progress={proteinProgressPct}
+              size={96}
+              strokeWidth={10}
+              color={proteinMet ? colors.success : colors.primary}
+            >
+              <Text
+                style={[
+                  styles.proteinRingValue,
+                  { color: proteinMet ? colors.success : colors.primary },
+                ]}
+              >
+                {Math.round(proteinProgressPct * 100)}%
+              </Text>
+            </Ring>
+            <View style={styles.proteinInfo}>
+              <Text style={styles.proteinBig}>
+                {analyzedTodayProtein}
+                <Text style={styles.proteinUnit}> / {proteinTarget}g</Text>
+              </Text>
+              <Text style={styles.proteinRemaining}>
+                {proteinMet
+                  ? (isTr ? 'Bugünkü hedefine ulaştın 🎯' : "Today's goal reached 🎯")
+                  : isTr
+                  ? `Hedefe ${remainingProtein}g kaldı`
+                  : `${remainingProtein}g to go`}
+              </Text>
+            </View>
+          </View>
+
+          <ProgressBar
+            progress={proteinProgressPct}
+            color={proteinMet ? colors.success : colors.primary}
+            height={8}
+            style={styles.proteinBar}
+          />
+        </Card>
+
+        {/* ── Coach Message ── (always available) */}
         <CoachMessage message={coachMsg} />
 
-        {/* ── Daily Quests & Gamification ── */}
-        <DailyQuestsCard
-          proteinPct={Math.round(proteinProgressPct * 100)}
-          mealCount={todayMeals.length}
-          loggedWorkout={todayExercises.length > 0}
-          loggedWeight={weightHistory.some(e => e.date === today)}
-        />
-
-        {/* ── Weight History Chart ── */}
-        <SectionTitle title={isTr ? `📉 Kilo Geçmişi (${weightUnit})` : '📉 Weight Progress'} />
-        <WeightChart data={chartWeightData} height={220} weightUnit={weightUnit} language={language} />
-
-        {/* ── Fat vs Muscle Loss ── */}
-        <SectionTitle title={isTr ? '🥩 Vücut Kompozisyonu' : '🥩 Body Composition'} />
-        {totalWeightLost > 0 ? (
-          <>
-            {/* Muscle Alert Banner */}
-            {musclePct >= 30 && (
-              <View style={[
-                styles.muscleAlertBanner,
-                { backgroundColor: musclePct >= 50 ? '#FEF2F2' : '#FFFBEB',
-                  borderColor: musclePct >= 50 ? '#FCA5A5' : '#FDE68A' },
-              ]}>
-                <Text style={styles.muscleAlertEmoji}>{musclePct >= 50 ? '🚨' : '⚠️'}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.muscleAlertTitle, { color: musclePct >= 50 ? '#DC2626' : '#D97706' }]}>
-                    {isTr
-                      ? `Kas korumayı desteklemek için protein alımınızı yüksek tutun`
-                      : `Keep protein high to support muscle maintenance`}
-                  </Text>
-                  <Text style={styles.muscleAlertDesc}>
-                    {isTr
-                      ? `Metabolizmanız yavaşlayabilir ve ilerlemeniz sekteye uğrayabilir. Protein + direnç egzersizi kombinasyonu bu riski ciddi ölçüde azaltabilir.`
-                      : `Your metabolism may slow and progress sustainability may be affected. Protein + resistance exercise can significantly reduce this risk.`}
-                  </Text>
-                </View>
-                <TouchableOpacity style={[
-                  styles.muscleAlertBtn,
-                  { backgroundColor: musclePct >= 50 ? '#DC2626' : '#D97706' },
-                ]} onPress={openCoachChat}>
-                  <Text style={styles.muscleAlertBtnText}>{isTr ? 'Rehber' : 'Guide'}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            <View style={styles.fatMuscleRow}>
-              <View style={[styles.fatMuscleCard, { backgroundColor: '#ECFDF5' }]}>
-                <Text style={styles.fatMuscleIcon}>🟢</Text>
-                <Text style={[styles.fatMuscleValue, { color: '#065F46' }]}>{formatWeight(fatLostKg)}</Text>
-                <Text style={[styles.fatMuscleLabel, { color: '#059669' }]}>
-                  {isTr ? 'Yağ Kaybı' : 'Fat Lost'}
-                </Text>
-                <Text style={[styles.fatMusclePct, { color: '#059669' }]}>%{fatPct}</Text>
-              </View>
-              <View style={[styles.fatMuscleCard, {
-                backgroundColor: musclePct >= 50 ? '#FEF2F2' : musclePct >= 30 ? '#FFF7ED' : '#F0FDF4',
-              }]}>
-                <Text style={styles.fatMuscleIcon}>{musclePct >= 50 ? '🚨' : musclePct >= 30 ? '🟠' : '🟢'}</Text>
-                <Text style={[styles.fatMuscleValue, { color: musclePct >= 50 ? '#DC2626' : musclePct >= 30 ? '#92400E' : '#065F46', fontSize: 13, fontWeight: '700' }]}>
-                  {musclePct >= 50 ? (isTr ? 'Kritik' : 'Critical') : musclePct >= 30 ? (isTr ? 'Yüksek' : 'High') : (isTr ? 'Düşük' : 'Low')}
-                </Text>
-                <Text style={[styles.fatMuscleLabel, { color: musclePct >= 50 ? '#EF4444' : musclePct >= 30 ? '#D97706' : '#059669' }]}>
-                  {isTr ? 'Kas Riski' : 'Muscle Risk'}
-                </Text>
-                <Text style={[styles.fatMusclePct, { color: musclePct >= 50 ? '#EF4444' : musclePct >= 30 ? '#D97706' : '#059669' }]}>
-                  %{musclePct >= 50 ? '40–50' : musclePct >= 30 ? '25–35' : '10–20'}
-                </Text>
-              </View>
-            </View>
-
-            {/* Fat/muscle split bar */}
-            <View style={styles.splitBarRow}>
-              <View style={[styles.splitBarSeg, { flex: fatPct, backgroundColor: '#10B981' }]} />
-              <View style={[styles.splitBarSeg, { flex: musclePct, backgroundColor: musclePct >= 50 ? '#EF4444' : '#F59E0B' }]} />
-            </View>
-            <View style={styles.splitBarLegend}>
-              <Text style={styles.splitBarLegendText}>🟢 {isTr ? 'Yağ' : 'Fat'} %{fatPct}</Text>
-              <Text style={[styles.splitBarLegendText, { color: musclePct >= 50 ? '#EF4444' : '#D97706' }]}>
-                {musclePct >= 30 ? '⚠️' : '🟠'} {isTr ? 'Kas' : 'Muscle'} %{musclePct}
-              </Text>
-            </View>
-            <Text style={styles.estimateCaption}>
-              {isTr
-                ? 'ℹ️ Yağ/kas dağılımı bir tahmindir — protein alımı ve kilo kaybı hızına göre hesaplanır, vücut ölçümü değildir.'
-                : 'ℹ️ Fat/muscle split is an estimate — calculated from protein intake & weight-loss rate, not body measurements.'}
-            </Text>
-          </>
-        ) : (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyCardText}>
-              {isTr
-                ? 'Hesaplama için daha fazla kilo kaydı gerekiyor.'
-                : 'Log more weights to see your fat vs muscle breakdown.'}
-            </Text>
-          </View>
-        )}
-
-        {/* ── 14-Day Projection ── */}
-        {showProjection && (
-          <>
-            <SectionTitle title={isTr ? '📈 14 Günlük Projeksiyon' : '📈 14-Day Projection'} />
-
-            <Text style={styles.estimateCaption}>
-              {isTr
-                ? 'ℹ️ Bu projeksiyon bir tahmindir — protein alımı ve kilo kaybı hızına dayanır, vücut ölçümü değildir. Gerçek sonuçlar değişebilir.'
-                : 'ℹ️ This projection is an estimate — based on protein intake & weight-loss rate, not body measurements. Actual results may vary.'}
-            </Text>
-
-            <View style={styles.projectionCard}>
-              <Text style={styles.projectionRateLabel}>
-                {isTr
-                  ? `Günlük hız: ${formatWeight(dailyRate)}/${isTr ? 'gün' : 'day'} · ${weightHistory.length} ölçümden hesaplandı`
-                  : `Daily rate: ${formatWeight(dailyRate)}/day · from ${weightHistory.length} weigh-ins`}
-              </Text>
-
-              {/* ── 3-path comparison table ── */}
-              <View style={styles.proj3Row}>
-
-                {/* Path A — current */}
-                <View style={[styles.proj3Col, { backgroundColor: musclePct >= 30 ? '#FEF2F2' : '#FFFBEB' }]}>
-                  <Text style={styles.proj3ColBadge}>
-                    {isTr ? 'Şu Gidişle' : 'As-Is'}
-                  </Text>
-                  <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
-                  <View style={styles.proj3BarWrap}>
-                    <View style={[styles.proj3BarFat, { flex: fatPct }]} />
-                    <View style={[styles.proj3BarMuscle, {
-                      flex: musclePct,
-                      backgroundColor: musclePct >= 30 ? '#EF4444' : '#F59E0B',
-                    }]} />
-                  </View>
-                  <Text style={styles.proj3Fat}>🟢 {isTr ? 'Yağ baskın' : 'Fat dominant'}</Text>
-                  <Text style={[styles.proj3Muscle, { color: musclePct >= 30 ? '#DC2626' : '#D97706' }]}>
-                    {musclePct >= 30 ? '🚨' : '⚠️'} {isTr
-                      ? `Kas riski ${musclePct >= 50 ? 'kritik' : 'yüksek'}`
-                      : `Muscle risk ${musclePct >= 50 ? 'critical' : 'high'}`}
-                  </Text>
-                  <Text style={[styles.proj3RiskRange, { color: musclePct >= 30 ? '#DC2626' : '#D97706' }]}>
-                    %{musclePct >= 50 ? '40–50' : '25–35'} {isTr ? 'kas olabilir' : 'may be muscle'}
-                  </Text>
-                </View>
-
-                {/* Path B — protein */}
-                <View style={[styles.proj3Col, { backgroundColor: '#F0FDF4' }]}>
-                  <Text style={[styles.proj3ColBadge, { color: '#065F46', backgroundColor: '#D1FAE5' }]}>
-                    {isTr ? '+ Protein' : '+ Protein'}
-                  </Text>
-                  <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
-                  <View style={styles.proj3BarWrap}>
-                    <View style={[styles.proj3BarFat, { flex: 95 }]} />
-                    <View style={[styles.proj3BarMuscle, { flex: 5, backgroundColor: '#10B981' }]} />
-                  </View>
-                  <Text style={styles.proj3Fat}>🟢 {isTr ? 'Yağ baskın' : 'Fat dominant'}</Text>
-                  <Text style={[styles.proj3Muscle, { color: '#059669' }]}>
-                    ✅ {isTr ? 'Kas riski düşük' : 'Muscle risk low'}
-                  </Text>
-                  <Text style={[styles.proj3RiskRange, { color: '#059669' }]}>
-                    %5 {isTr ? 'kas olabilir' : 'may be muscle'}
-                  </Text>
-                </View>
-
-                {/* Path C — protein + exercise */}
-                <View style={[styles.proj3Col, { backgroundColor: '#EEF2FF', borderWidth: 1.5, borderColor: '#A5B4FC' }]}>
-                  <Text style={[styles.proj3ColBadge, { color: '#3730A3', backgroundColor: '#C7D2FE' }]}>
-                    {isTr ? '+ Egzersiz' : '+ Exercise'}
-                  </Text>
-                  <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
-                  <View style={styles.proj3BarWrap}>
-                    <View style={[styles.proj3BarFat, { flex: 98 }]} />
-                    <View style={[styles.proj3BarMuscle, { flex: 2, backgroundColor: '#6366F1' }]} />
-                  </View>
-                  <Text style={styles.proj3Fat}>🟢 {isTr ? 'Yağ baskın' : 'Fat dominant'}</Text>
-                  <Text style={[styles.proj3Muscle, { color: '#4F46E5' }]}>
-                    💪 {isTr ? 'Kas riski minimum' : 'Muscle risk minimal'}
-                  </Text>
-                  <Text style={[styles.proj3RiskRange, { color: '#4F46E5' }]}>
-                    %2 {isTr ? 'kas olabilir' : 'may be muscle'}
-                  </Text>
-                </View>
-
-              </View>
-
-              {/* ── Action tips ── */}
-              <View style={styles.projTipsWrap}>
-
-                {musclePct >= 30 && (
-                  <View style={styles.projTip}>
-                    <Text style={styles.projTipIcon}>🥩</Text>
-                    <Text style={styles.projTipText}>
-                      {isTr
-                        ? `Günlük protein hedefine ulaşmak kas korumayı destekler.`
-                        : `Hitting your daily protein target supports muscle maintenance.`}
-                    </Text>
-                  </View>
-                )}
-
-                <View style={[styles.projTip, { backgroundColor: '#EEF2FF' }]}>
-                  <Text style={styles.projTipIcon}>💪</Text>
-                  <Text style={styles.projTipText}>
-                    {isTr
-                      ? `Haftada 2–3 direnç egzersizi kas korumayı destekler ve metabolizmanızı güçlü tutar.`
-                      : `2–3 resistance sessions/week supports muscle maintenance and keeps your metabolism strong.`}
-                  </Text>
-                </View>
-
-                <View style={[styles.projTip, { backgroundColor: '#F0FDF4' }]}>
-                  <Text style={styles.projTipIcon}>🏆</Text>
-                  <Text style={styles.projTipText}>
-                    {isTr
-                      ? `Protein + egzersiz kombinasyonu kas koruma ve metabolizma için en güçlü senaryodur.`
-                      : `Protein + exercise is the strongest combination for muscle maintenance and metabolism.`}
-                  </Text>
-                </View>
-
-              </View>
-
-              {/* ── Disclaimer ── */}
-              <Text style={styles.projDisclaimer}>
-                {isTr
-                  ? `📋 Bu tahminler protein alımı, kilo kaybı hızı ve aktivite düzeyine dayanmaktadır. Gerçek sonuçlar kişiye göre değişebilir.`
-                  : `📋 Estimates are based on protein intake, weight loss rate, and activity level. Actual results may vary.`}
-              </Text>
-            </View>
-          </>
-        )}
-
-        {/* ── Muscle Preservation Score ── */}
-        <SectionTitle
-          title={isTr ? '🧠 Kas Sağlığı' : '🧠 Muscle Health'}
-        />
-        <View style={styles.scoreCard}>
-          <View style={styles.scoreRingHeader}>
-            <Ring
-              progress={Math.min(muscleScore, 100) / 100}
-              size={88}
-              strokeWidth={10}
-              color={muscleScoreInfo.color}
-            >
-              <Text style={[styles.scoreRingValue, { color: muscleScoreInfo.color }]}>
-                {muscleScore}
-              </Text>
-              <Text style={styles.scoreRingMax}>/100</Text>
-            </Ring>
-            <View style={styles.scoreRingTextCol}>
-              <View style={styles.scoreRingTitleRow}>
-                <Text style={styles.scoreCardEmoji}>{muscleScoreInfo.emoji}</Text>
-                <Text style={[styles.scoreCardLabel, { color: muscleScoreInfo.color }]}>
-                  {muscleScoreInfo.label}
-                </Text>
-              </View>
-              <Text style={styles.scoreCardDesc}>{muscleScoreInfo.desc}</Text>
-            </View>
-          </View>
-
-          {/* Factor breakdown */}
-          <View style={styles.scoreFactors}>
-            <View style={styles.scoreFactor}>
-              <Text style={styles.scoreFactorDot}>
-                {proteinRatio >= 0.8 ? '🟢' : proteinRatio >= 0.6 ? '🟡' : '🔴'}
-              </Text>
-              <Text style={styles.scoreFactorText}>
-                {isTr
-                  ? `Protein: ${proteinRatio >= 0.8 ? 'İyi' : proteinRatio >= 0.6 ? 'Yetersiz' : 'Kritik'}`
-                  : `Protein: ${proteinRatio >= 0.8 ? 'Good' : proteinRatio >= 0.6 ? 'Low' : 'Critical'}`}
-              </Text>
-            </View>
-            <View style={styles.scoreFactor}>
-              <Text style={styles.scoreFactorDot}>
-                {exerciseDays >= 2 ? '🟢' : exerciseDays >= 1 ? '🟡' : '🔴'}
-              </Text>
-              <Text style={styles.scoreFactorText}>
-                {isTr
-                  ? `Egzersiz: ${exerciseDays >= 2 ? 'Aktif' : exerciseDays >= 1 ? 'Az' : 'Yok'}`
-                  : `Exercise: ${exerciseDays >= 2 ? 'Active' : exerciseDays >= 1 ? 'Low' : 'None'}`}
-              </Text>
-            </View>
-            <View style={styles.scoreFactor}>
-              <Text style={styles.scoreFactorDot}>
-                {weeklyRate <= 0.5 ? '🟢' : weeklyRate <= 1.0 ? '🟡' : '🔴'}
-              </Text>
-              <Text style={styles.scoreFactorText}>
-                {isTr
-                  ? `Kayıp hızı: ${weeklyRate <= 0.5 ? 'Normal' : weeklyRate <= 1.0 ? 'Orta' : 'Hızlı'}`
-                  : `Loss rate: ${weeklyRate <= 0.5 ? 'Normal' : weeklyRate <= 1.0 ? 'Moderate' : 'Fast'}`}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ── Sustainability Score ── */}
-        <SectionTitle title={isTr ? '⚡ Sürdürülebilirlik Skoru' : '⚡ Sustainability Score'} />
-        <View style={[styles.riskCard, { backgroundColor: reboundInfo.bg }]}>
-          <View style={styles.riskCardRow}>
-            <Text style={styles.riskCardEmoji}>{reboundInfo.emoji}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.riskCardLabel, { color: reboundInfo.color }]}>
-                {reboundInfo.label}
-              </Text>
-              <Text style={styles.riskCardDesc}>{reboundInfo.desc}</Text>
-            </View>
-          </View>
-          {riskData.factors.length > 0 && (
-            <View style={styles.riskFactors}>
-              <Text style={styles.riskFactorsTitle}>
-                {isTr ? 'Risk faktörleri:' : 'Risk factors:'}
-              </Text>
-              {riskData.factors.map((f, i) => (
-                <Text key={i} style={styles.riskFactor}>✗ {f}</Text>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* ── Motivational Protein Card ── */}
-        <SectionTitle title={isTr ? '💡 Günlük Protein Hedefi' : '💡 Daily Protein Goal'} />
-
-        {/* "Why X grams?" explanation */}
-        {profile?.weight && (
-          <View style={styles.proteinWhyCard}>
-            <Text style={styles.proteinWhyText}>
-              {isTr
-                ? `Neden ${proteinTarget}g? → ${profile.weight} kg × 1,6 g/kg = kas koruma için optimal protein. Direnç egzersizi yapılan günlerde 2,0 g/kg hedeflerinizi daha da destekler.`
-                : `Why ${proteinTarget}g? → ${profile.weight} kg × 1.6 g/kg = optimal protein for muscle maintenance. On resistance training days, 2.0 g/kg further supports your goals.`}
-            </Text>
-            <View style={styles.proteinThresholds}>
-              <View style={[styles.proteinThresholdPill, { backgroundColor: '#FEE2E2' }]}>
-                <Text style={styles.proteinThresholdPillText}>
-                  {isTr ? `<${Math.round(proteinTarget * 0.6)}g 🚨 Risk` : `<${Math.round(proteinTarget * 0.6)}g 🚨 Risk`}
-                </Text>
-              </View>
-              <View style={[styles.proteinThresholdPill, { backgroundColor: '#FEF3C7' }]}>
-                <Text style={styles.proteinThresholdPillText}>
-                  {`${Math.round(proteinTarget * 0.6)}–${Math.round(proteinTarget * 0.8)}g ⚠️`}
-                </Text>
-              </View>
-              <View style={[styles.proteinThresholdPill, { backgroundColor: '#ECFDF5' }]}>
-                <Text style={styles.proteinThresholdPillText}>
-                  {`>${Math.round(proteinTarget * 0.8)}g ✅`}
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {proteinMet ? (
-          <View style={[styles.proteinActionCard, { backgroundColor: '#ECFDF5' }]}>
-            <Text style={styles.proteinActionEmoji}>🎯</Text>
-            <Text style={[styles.proteinActionTitle, { color: '#065F46' }]}>
-              {isTr
-                ? 'Günlük protein hedefinize ulaştınız! Kaslarınızı harika koruyorsunuz.'
-                : 'Daily protein target reached! Great job protecting your muscles today.'}
-            </Text>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: '100%', backgroundColor: '#10B981' }]} />
-            </View>
-            <Text style={styles.proteinProgressLabel}>
-              {analyzedTodayProtein}g / {proteinTarget}g
-            </Text>
-          </View>
-        ) : (
-          <View style={[styles.proteinActionCard, {
-            backgroundColor: proteinProgressPct < 0.6 ? '#FEF2F2' : proteinProgressPct < 0.8 ? '#FFFBEB' : '#EEF2FF',
-          }]}>
-            <Text style={styles.proteinActionEmoji}>
-              {proteinProgressPct < 0.6 ? '🚨' : proteinProgressPct < 0.8 ? '⚠️' : '💪'}
-            </Text>
-            <Text style={[styles.proteinActionTitle, {
-              color: proteinProgressPct < 0.6 ? '#DC2626' : proteinProgressPct < 0.8 ? '#D97706' : '#3730A3',
-            }]}>
-              {getRotatingSuggestion(remainingProtein, language)}
-            </Text>
-            <View style={styles.progressBarBg}>
-              <View style={[
-                styles.progressBarFill,
-                {
-                  width: `${Math.round(proteinProgressPct * 100)}%`,
-                  backgroundColor: proteinProgressPct < 0.6 ? '#EF4444' : proteinProgressPct < 0.8 ? '#F59E0B' : '#4F46E5',
-                },
-              ]} />
-            </View>
-            <Text style={styles.proteinProgressLabel}>
-              {analyzedTodayProtein}g / {proteinTarget}g ({Math.round(proteinProgressPct * 100)}%)
-            </Text>
-          </View>
-        )}
-
-        {/* ── Sustaining Your Progress Tips ── */}
-        <SectionTitle title={isTr ? '🔄 İlerlemenizi Sürdürün' : '🔄 Sustaining Your Progress'} />
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tipsScroll}
-        >
-          {afterTips.map((tip, index) => (
-            <View key={index} style={styles.tipCard}>
-              <View style={[styles.tipIconCircle, { backgroundColor: tip.iconBg }]}>
-                <Text style={styles.tipIcon}>{tip.icon}</Text>
-              </View>
-              <Text style={styles.tipTitle}>{tip.title}</Text>
-              <Text style={styles.tipText}>{tip.text}</Text>
-            </View>
-          ))}
-        </ScrollView>
-
-        <View style={{ height: 40 }} />
+        <View style={{ height: 32 }} />
       </ScrollView>
 
       {/* ── Coach Chat Modal ── */}
@@ -1717,62 +1178,118 @@ const styles = StyleSheet.create({
 
   // ── Hero Card ──
   heroCard: {
-    marginBottom: 12,
-  },
-  heroTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: spacing.stackLg,
   },
   heroGreeting: {
-    fontSize: 16,
+    ...typography.bodyMd,
     fontFamily: fontFamily.bodySemiBold,
     fontWeight: '600',
     color: 'rgba(255,255,255,0.85)',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   heroWeight: {
-    fontSize: 36,
-    fontFamily: fontFamily.headingExtraBold,
-    fontWeight: '800',
+    ...typography.displayStat,
+    fontSize: 44,
+    lineHeight: 50,
     color: colors.onPrimary,
   },
   heroWeightEmpty: {
-    fontSize: 18,
-    fontFamily: fontFamily.headingSemiBold,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.6)',
+    ...typography.headlineMd,
+    color: 'rgba(255,255,255,0.7)',
   },
   heroActions: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    gap: 12,
+    marginTop: spacing.stackLg,
   },
-  heroCoachBtn: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 12,
-    width: 42,
-    height: 42,
+  heroActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: radii.md,
+    paddingVertical: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
+    borderColor: 'rgba(255,255,255,0.3)',
   },
-  heroCoachBtnEmoji: { fontSize: 20 },
-  heroLogBtn: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
+  heroActionBtnSolid: {
+    backgroundColor: colors.white,
+    borderColor: colors.white,
   },
-  heroLogBtnText: {
+  heroActionEmoji: { fontSize: 18 },
+  heroActionText: {
     color: colors.onPrimary,
     fontFamily: fontFamily.bodyBold,
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: 14,
   },
+  heroActionTextSolid: {
+    color: colors.primary,
+  },
+
+  // ── Compact Steps Card ──
+  stepsCard: { marginBottom: spacing.stackMd },
+  stepsRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+  stepsEmoji: { fontSize: 24 },
+  stepsLabel: { ...typography.labelSm, color: colors.onSurfaceVariant },
+  stepsValue: {
+    fontSize: 22,
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    color: colors.onSurface,
+    marginTop: 2,
+  },
+  stepsGoal: {
+    fontSize: 14,
+    fontFamily: fontFamily.bodyMedium,
+    fontWeight: '500',
+    color: colors.onSurfaceVariant,
+  },
+  stepsBar: { marginTop: 2 },
+
+  // ── Simple Daily Protein Goal Card ──
+  proteinCard: { marginBottom: spacing.stackMd },
+  proteinHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.stackMd,
+  },
+  proteinTitle: {
+    ...typography.headlineMd,
+    fontSize: 18,
+    lineHeight: 24,
+    color: colors.onSurface,
+  },
+  proteinBody: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: spacing.stackMd },
+  proteinRingValue: {
+    fontSize: 22,
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+  },
+  proteinInfo: { flex: 1 },
+  proteinBig: {
+    ...typography.headlineLg,
+    fontSize: 30,
+    lineHeight: 36,
+    color: colors.onSurface,
+  },
+  proteinUnit: {
+    fontSize: 16,
+    fontFamily: fontFamily.bodyMedium,
+    fontWeight: '500',
+    color: colors.onSurfaceVariant,
+  },
+  proteinRemaining: {
+    ...typography.bodyMd,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.onSurfaceVariant,
+    marginTop: 4,
+  },
+  proteinBar: { marginTop: 2 },
 
   // ── Coach Chat ──
   chatOverlay: {

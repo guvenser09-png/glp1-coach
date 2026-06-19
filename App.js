@@ -29,23 +29,33 @@ import { UnitProvider } from './src/context/UnitContext';
 import AppNavigator from './src/navigation/AppNavigator';
 
 export default function App() {
-  const [jakartaLoaded] = usePlusJakartaSans({
+  const [jakartaLoaded, jakartaError] = usePlusJakartaSans({
     PlusJakartaSans_400Regular,
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,
     PlusJakartaSans_700Bold,
     PlusJakartaSans_800ExtraBold,
   });
-  const [interLoaded] = useInter({
+  const [interLoaded, interError] = useInter({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
   });
 
-  const fontsLoaded = jakartaLoaded && interLoaded;
+  // Fail-open: if a font errors OR is slow, still render (text falls back to the
+  // system font) instead of hanging forever on the loading spinner. A 4s timeout
+  // guarantees the app never gets stuck on the font gate.
+  const [fontTimeout, setFontTimeout] = React.useState(false);
+  React.useEffect(() => {
+    const id = setTimeout(() => setFontTimeout(true), 4000);
+    return () => clearTimeout(id);
+  }, []);
 
-  if (!fontsLoaded) {
+  const fontsReady =
+    (jakartaLoaded || !!jakartaError) && (interLoaded || !!interError);
+
+  if (!fontsReady && !fontTimeout) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color="#4F46E5" />

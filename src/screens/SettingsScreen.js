@@ -743,6 +743,18 @@ export default function SettingsScreen({ navigation }) {
             />
           </Card>
 
+          {/* Points & Rewards */}
+          <SectionTitle title={isTr ? 'Puanlarım & Ödüller' : 'Points & Rewards'} />
+          <Card style={styles.cardSpacing} padding={0} contentStyle={styles.groupInner}>
+            <ListRow
+              icon={<Text style={styles.rowEmoji}>🏆</Text>}
+              label={isTr ? 'Puanlarım & Ödüller' : 'Points & Rewards'}
+              subtitle={isTr ? 'Rozetler, görevler ve XP' : 'Badges, missions & XP'}
+              chevron
+              onPress={() => navigation.navigate('Rewards')}
+            />
+          </Card>
+
           {/* Medication & Reminders */}
           <SectionTitle title={isTr ? 'İlaç & Hatırlatıcılar' : 'Medication & Reminders'} />
           <Card style={styles.cardSpacing} padding={0} contentStyle={styles.groupInner}>

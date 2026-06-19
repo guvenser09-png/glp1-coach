@@ -26,8 +26,10 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { getUserProfile } from '../services/firestoreService';
 import { analyzeMealWithAI, analyzeMealWithText } from '../services/openaiService';
+import { OPENAI_API_KEY } from '../config';
 import { saveMealAnalysis } from '../services/firestoreService';
 import { getWeightLogs } from '../services/firestoreService';
+import { calculateMuscleScore, calculateReboundRisk } from '../utils/heuristics';
 import { getMedicationProfile } from '../services/medicationService';
 import { sendCoachMessage } from '../services/coachChatService';
 import AIConsentModal from '../components/AIConsentModal';
@@ -36,14 +38,98 @@ import * as healthkitService from '../services/healthkitService';
 import { useGamification } from '../context/GamificationContext';
 import { useUnit } from '../context/UnitContext';
 import { colors, semantic, fontFamily, typography, spacing, radii, shadow } from '../theme';
-import { Screen, Card, GradientHero, PrimaryButton, SecondaryButton, Chip, SectionTitle, Badge } from '../components/ui';
+import { Screen, Card, GradientHero, PrimaryButton, SecondaryButton, Chip, SectionTitle, Badge, Ring, ProgressBar } from '../components/ui';
 
 const FREE_DAILY_LIMIT = 2;
+
+// ── Body-composition + muscle-health helpers (ported from Dashboard/WeeklyReport) ──
+function getFatMuscleRatio(proteinRatio) {
+  if (proteinRatio >= 1.0) return { fatPct: 95, musclePct: 5 };
+  if (proteinRatio >= 0.8) return { fatPct: 80, musclePct: 20 };
+  if (proteinRatio >= 0.6) return { fatPct: 65, musclePct: 35 };
+  return { fatPct: 50, musclePct: 50 };
+}
+
+function getMuscleScoreLabel(score, isTr) {
+  if (score >= 85) {
+    return {
+      emoji: '💪',
+      label: isTr ? 'Mükemmel Koruma' : 'Excellent Protection',
+      desc: isTr
+        ? 'Protein alımınız kaslarınızı çok iyi koruyor.'
+        : 'Your protein intake is protecting your muscles well.',
+      color: '#10B981',
+    };
+  }
+  if (score >= 65) {
+    return {
+      emoji: '✅',
+      label: isTr ? 'İyi Koruma' : 'Good Protection',
+      desc: isTr
+        ? 'Daha iyi sonuçlar için proteini biraz artırın.'
+        : 'Slightly increase protein for better results.',
+      color: '#4F46E5',
+    };
+  }
+  if (score >= 40) {
+    return {
+      emoji: '⚠️',
+      label: isTr ? 'Orta Risk' : 'Moderate Risk',
+      desc: isTr
+        ? 'Protein alımı optimal değil. Günlük hedefe ulaşmaya çalışın.'
+        : 'Protein intake is below optimal. Try to reach your daily target.',
+      color: '#F59E0B',
+    };
+  }
+  return {
+    emoji: '🚨',
+    label: isTr ? 'Yüksek Risk' : 'High Risk',
+    desc: isTr
+      ? 'Çok düşük protein alımı. Kas koruma için bugün proteine öncelik verin.'
+      : 'Very low protein intake. Prioritize protein today for muscle maintenance.',
+    color: '#EF4444',
+  };
+}
+
+function getReboundRiskContent(level, isTr) {
+  if (level === 'Low') {
+    return {
+      emoji: '🟢',
+      label: isTr ? 'Yüksek Sürdürülebilirlik Skoru' : 'High Sustainability Score',
+      desc: isTr
+        ? 'Alışkanlıklarınız ilerlemenizi korumaya yardımcı oluyor. Devam edin!'
+        : 'Your habits are helping sustain your progress. Keep it up!',
+      color: '#10B981',
+      bg: '#ECFDF5',
+    };
+  }
+  if (level === 'Medium') {
+    return {
+      emoji: '🟡',
+      label: isTr ? 'Orta Sürdürülebilirlik Skoru' : 'Moderate Sustainability Score',
+      desc: isTr
+        ? 'Bazı alışkanlıkların dikkat gerektiriyor. Protein ve harekete odaklan.'
+        : 'Some habits need attention. Focus on protein and movement.',
+      color: '#D97706',
+      bg: '#FFFBEB',
+    };
+  }
+  return {
+    emoji: '🔴',
+    label: isTr ? 'Düşük Sürdürülebilirlik Skoru' : 'Low Sustainability Score',
+    desc: isTr
+      ? 'Hızlı kilo kaybı + düşük protein = sürdürülebilirlik riski. Hemen protein kaynaklarına yönelin.'
+      : 'Fast weight loss + low protein = sustainability risk. Add protein sources now.',
+    color: '#EF4444',
+    bg: '#FEF2F2',
+  };
+}
 
 export default function MealAnalysisScreen({ navigation }) {
   const { user } = useAuth();
   const { t, language } = useLanguage();
   const { completeMission, earnXP } = useGamification();
+  const { formatWeight } = useUnit();
   const isTr = language === 'tr';
 
   const [imageUri, setImageUri] = useState(null);
@@ -65,6 +151,10 @@ export default function MealAnalysisScreen({ navigation }) {
   // Coach context: GLP-1 medication profile + recent weight history (optional/guarded)
   const [medProfile, setMedProfile] = useState(null);
   const [weightHistory, setWeightHistory] = useState([]);
+
+  // 7-day analytics for Muscle Health / Body Composition / Weekly Report sections
+  const [avgProteinRatio, setAvgProteinRatio] = useState(0);
+  const [dailyProtein, setDailyProtein] = useState([]); // 7 day rows (oldest→newest)
 
   // Exercise logging
   const [exercises, setExercises] = useState([]);
@@ -166,6 +256,50 @@ export default function MealAnalysisScreen({ navigation }) {
     if (!todayExerciseKey) return;
     AsyncStorage.getItem(todayExerciseKey).then(raw => { if (raw) setExercises(JSON.parse(raw)); });
   }, [todayExerciseKey]);
+
+  // ── 7-day protein/calorie scan for the daily insights sections ──────────────
+  const loadWeeklyAnalytics = useCallback(async () => {
+    if (!user) return;
+    try {
+      const userWeight = profile?.weight || 70;
+      const userGender = profile?.gender;
+      const bmr = Math.round(userWeight * (userGender === 'male' ? 24 : userGender === 'female' ? 22 : 23));
+      const target = profile?.proteinTarget ?? 120;
+      const DAY_NAMES_TR = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+      const DAY_NAMES_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      let totalRatio = 0;
+      let daysWithData = 0;
+      const rows = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().split('T')[0];
+        const dayName = isTr ? DAY_NAMES_TR[d.getDay()] : DAY_NAMES_EN[d.getDay()];
+        const rawMeals = await AsyncStorage.getItem(`daily_meals_${user.uid}_${dateStr}`);
+        const rawEx = await AsyncStorage.getItem(`daily_exercise_${user.uid}_${dateStr}`);
+        const exList = rawEx ? JSON.parse(rawEx) : [];
+        const exerciseCal = exList.reduce((s, e) => s + (e.caloriesBurned || 0), 0);
+        if (rawMeals) {
+          const meals = JSON.parse(rawMeals);
+          const grams = meals.reduce((s, m) => s + (m.protein || 0), 0);
+          const foodCal = meals.reduce((s, m) => s + (m.calories || 0), 0);
+          const balance = foodCal > 0 ? foodCal - (bmr + exerciseCal) : null;
+          totalRatio += target > 0 ? grams / target : 0;
+          daysWithData++;
+          rows.push({ dayName, grams, target, ratio: target > 0 ? grams / target : 0, hasData: true, foodCal, exerciseCal, bmr, balance });
+        } else {
+          rows.push({ dayName, grams: 0, target, ratio: 0, hasData: false, foodCal: 0, exerciseCal: 0, bmr, balance: null });
+        }
+      }
+      setDailyProtein(rows);
+      setAvgProteinRatio(daysWithData > 0 ? totalRatio / daysWithData : 0);
+    } catch {
+      // best-effort — show zeros
+    }
+  }, [user, profile, isTr]);
+
+  useEffect(() => { loadWeeklyAnalytics(); }, [loadWeeklyAnalytics]);
+  useFocusEffect(useCallback(() => { loadWeeklyAnalytics(); }, [loadWeeklyAnalytics]));
 
   useEffect(() => {
     if (user) {
@@ -378,6 +512,18 @@ export default function MealAnalysisScreen({ navigation }) {
   }
 
   async function runAnalyze() {
+    // No AI key → photo can't be "seen". Route to manual entry (offline estimate)
+    // instead of showing an error.
+    if (!OPENAI_API_KEY) {
+      Alert.alert(
+        isTr ? 'Fotoğrafı Yazın' : 'Describe the Photo',
+        isTr
+          ? 'Fotoğraf analizi için yapay zekâ anahtarı gerekiyor. Fotoğraftaki yemeği yazın — protein ve kalori otomatik tahmin edilecek.'
+          : 'Photo analysis needs an AI key. Type the meal from the photo — protein and calories are estimated automatically.'
+      );
+      openManualAdd();
+      return;
+    }
     setAnalyzing(true);
     try {
       const analysis = await analyzeMealWithAI(imageUri, language);
@@ -400,7 +546,10 @@ export default function MealAnalysisScreen({ navigation }) {
         try { await saveMealAnalysis(user.uid, { ...analysis, imageUri }); } catch {}
       }
     } catch (e) {
-      Alert.alert('Analysis Error', String(e?.message || e));
+      Alert.alert(
+        isTr ? 'Analiz Yapılamadı' : 'Analysis Unavailable',
+        String(e?.message || e)
+      );
     } finally {
       setAnalyzing(false);
     }
@@ -597,6 +746,121 @@ export default function MealAnalysisScreen({ navigation }) {
   const balanceIcon = calBalance === null ? '—' : calBalance > 0 ? '🔴' : '🟢';
   const PORTIONS = ['Small', 'Medium', 'Large'];
   const portionLabel = (p) => ({ Small: isTr ? 'Küçük' : 'Small', Medium: isTr ? 'Orta' : 'Medium', Large: isTr ? 'Büyük' : 'Large' }[p] || p);
+
+  // ── Daily insights: Muscle Health / Body Composition / Weekly Report ──────────
+  const exerciseDaysPerWeek = profile?.exerciseDaysPerWeek ?? (exercises.length > 0 ? 1 : 0);
+  const todayProteinRatio = proteinTarget > 0 ? totalProtein / proteinTarget : 0;
+
+  // Weight-derived metrics (weightHistory is sorted oldest→newest)
+  const currentWeight = weightHistory.length > 0 ? weightHistory[weightHistory.length - 1].weight : null;
+  const totalWeightLost = weightHistory.length >= 2
+    ? parseFloat((weightHistory[0].weight - weightHistory[weightHistory.length - 1].weight).toFixed(1))
+    : 0;
+  const dailyRate = (() => {
+    if (weightHistory.length < 2) return 0;
+    const first = weightHistory[0];
+    const last = weightHistory[weightHistory.length - 1];
+    const daysDiff = Math.max(1, Math.round(
+      (new Date(last.date).getTime() - new Date(first.date).getTime()) / (1000 * 60 * 60 * 24)
+    ));
+    return parseFloat(((first.weight - last.weight) / daysDiff).toFixed(2));
+  })();
+  const weeklyRate = parseFloat((dailyRate * 7).toFixed(1));
+  const weeklyLossPercent = currentWeight && dailyRate > 0 ? (weeklyRate / currentWeight) * 100 : 0;
+
+  // Muscle preservation score (heuristics) + factor breakdown
+  const muscleScore = calculateMuscleScore(totalProtein, proteinTarget, exerciseDaysPerWeek);
+  const muscleScoreInfo = getMuscleScoreLabel(muscleScore, isTr);
+
+  // Sustainability / rebound risk
+  const consecutiveLowProteinDays = (() => {
+    let count = 0;
+    for (let i = dailyProtein.length - 1; i >= 0; i--) {
+      const day = dailyProtein[i];
+      if (!day.hasData) break;
+      if (day.ratio < 0.8) count++;
+      else break;
+    }
+    return count;
+  })();
+  const riskData = calculateReboundRisk(weeklyLossPercent, todayProteinRatio, exerciseDaysPerWeek, consecutiveLowProteinDays);
+  const reboundInfo = getReboundRiskContent(riskData.level, isTr);
+
+  // Body composition (use 7-day avg ratio if present, else today's)
+  const { fatPct, musclePct } = getFatMuscleRatio(avgProteinRatio || todayProteinRatio);
+  const fatLostKg = totalWeightLost > 0 ? parseFloat(((totalWeightLost * fatPct) / 100).toFixed(1)) : 0;
+  const muscleLostKg = totalWeightLost > 0 ? parseFloat(((totalWeightLost * musclePct) / 100).toFixed(1)) : 0;
+
+  // 14-day projection
+  const projected14 = dailyRate > 0 ? parseFloat((dailyRate * 14).toFixed(1)) : 0;
+  const showProjection = projected14 > 0;
+
+  // Weekly report metrics
+  const hasWeeklyData = weightHistory.length >= 2;
+  const weeklyChange = (() => {
+    if (weightHistory.length < 2) return 0;
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const recent = weightHistory.filter((l) => new Date(l.date) >= weekAgo);
+    return recent.length >= 2
+      ? parseFloat((recent[0].weight - recent[recent.length - 1].weight).toFixed(1))
+      : 0;
+  })();
+  const weeklyChangeAbs = Math.abs(weeklyChange);
+  const weeklyFatLost = weeklyChangeAbs > 0 ? parseFloat(((weeklyChangeAbs * fatPct) / 100).toFixed(1)) : 0;
+  const weeklyMuscleLost = weeklyChangeAbs > 0 ? parseFloat(((weeklyChangeAbs * musclePct) / 100).toFixed(1)) : 0;
+  const totalFatLost = Math.abs(totalWeightLost) > 0 ? parseFloat(((Math.abs(totalWeightLost) * fatPct) / 100).toFixed(1)) : 0;
+  const avgPct = Math.max(0, Math.min(1, avgProteinRatio));
+  const avgPctLabel = Math.round(avgProteinRatio * 100);
+  const muscleTier = musclePct >= 50 ? 'critical' : musclePct >= 30 ? 'high' : 'low';
+  const muscleTone = muscleTier === 'critical' ? 'danger' : muscleTier === 'high' ? 'warning' : 'success';
+  const muscleTonePalette = semantic[muscleTone];
+  const muscleGrade = muscleTier === 'critical' ? 'C' : muscleTier === 'high' ? 'B' : 'A';
+  const muscleRiskLabel = muscleTier === 'critical' ? (isTr ? 'Kritik' : 'Critical')
+    : muscleTier === 'high' ? (isTr ? 'Yüksek' : 'High') : (isTr ? 'Düşük' : 'Low');
+  const muscleRiskRange = muscleTier === 'critical' ? '40–50' : muscleTier === 'high' ? '25–35' : '10–20';
+  const muscleEmoji = muscleTier === 'critical' ? '🚨' : muscleTier === 'high' ? '🟠' : '🟢';
+
+  const weekRangeLabel = (() => {
+    const fmt = (dt) => dt.toLocaleDateString(isTr ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'short' });
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - 6);
+    return `${fmt(start)} – ${fmt(end)}`;
+  })();
+
+  // Weekly AI insight cards (recommendations) — same logic as WeeklyReport
+  const recommendations = (() => {
+    const recs = [];
+    const totalAbs = Math.abs(totalWeightLost);
+    const weeklyAbs = Math.abs(weeklyChange);
+    if (totalAbs > 0 && muscleLostKg / totalAbs > 0.2) {
+      recs.push(isTr
+        ? `Günlük ${proteinTarget}g protein hedefinizi artırın — kas korumayı desteklemek için.`
+        : `Increase daily protein to ${proteinTarget}g to support muscle maintenance.`);
+    } else {
+      recs.push(isTr
+        ? 'Protein alımınız kaslarınızı iyi koruyor. Bu tutarlılığı sürdürün!'
+        : 'Your protein intake is protecting your muscles well. Keep up the consistency!');
+    }
+    if (weeklyAbs > 0 && weeklyAbs / (weeklyAbs + 70) > 0.01) {
+      recs.push(isTr
+        ? 'Haftalık kilo kaybı hızlı — proteine öncelik verin ve direnç egzersizi ekleyin.'
+        : 'Weight loss pace is fast — prioritize protein and add resistance training.');
+    } else if (weeklyChange > 0) {
+      recs.push(isTr
+        ? 'Kilo kaybı hızınız ideal aralıkta. Böyle devam edin!'
+        : 'Your weight loss rate is in the ideal range. Keep it up!');
+    } else {
+      recs.push(isTr
+        ? 'Bu hafta kilo değişimi yok. Genel beslenmenizi gözden geçirin.'
+        : 'No weight change this week. Review your overall nutrition if needed.');
+    }
+    recs.push(isTr
+      ? 'Tutarlılık en önemli faktör — her gün küçük adımlar büyük sonuçlar doğurur.'
+      : 'Keep up the great work! Consistency is key — small daily steps lead to big results.');
+    return recs;
+  })();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -952,6 +1216,363 @@ export default function MealAnalysisScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
             ))}
+          </Card>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        {/* DAILY INSIGHTS — Muscle Health + Body Composition + Weekly Report   */}
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+
+        {/* ── Kas Sağlığı / Muscle Health ── */}
+        <SectionTitle
+          title={isTr ? '🧠 Kas Sağlığı' : '🧠 Muscle Health'}
+          style={styles.insightsSection}
+        />
+        <Card elevation="md" style={styles.insightCardBlock}>
+          <View style={styles.scoreRingHeader}>
+            <Ring
+              progress={Math.min(muscleScore, 100) / 100}
+              size={88}
+              strokeWidth={10}
+              color={muscleScoreInfo.color}
+              trackColor={colors.outlineVariant}
+            >
+              <Text style={[styles.scoreRingValue, { color: muscleScoreInfo.color }]}>{muscleScore}</Text>
+              <Text style={styles.scoreRingMax}>/100</Text>
+            </Ring>
+            <View style={styles.scoreRingTextCol}>
+              <View style={styles.scoreRingTitleRow}>
+                <Text style={styles.scoreCardEmoji}>{muscleScoreInfo.emoji}</Text>
+                <Text style={[styles.scoreCardLabel, { color: muscleScoreInfo.color }]}>{muscleScoreInfo.label}</Text>
+              </View>
+              <Text style={styles.scoreCardDesc}>{muscleScoreInfo.desc}</Text>
+            </View>
+          </View>
+
+          {/* Factor breakdown: protein / exercise / loss-rate */}
+          <View style={styles.scoreFactors}>
+            <View style={styles.scoreFactor}>
+              <Text style={styles.scoreFactorDot}>
+                {todayProteinRatio >= 0.8 ? '🟢' : todayProteinRatio >= 0.6 ? '🟡' : '🔴'}
+              </Text>
+              <Text style={styles.scoreFactorText}>
+                {isTr
+                  ? `Protein: ${todayProteinRatio >= 0.8 ? 'İyi' : todayProteinRatio >= 0.6 ? 'Yetersiz' : 'Kritik'}`
+                  : `Protein: ${todayProteinRatio >= 0.8 ? 'Good' : todayProteinRatio >= 0.6 ? 'Low' : 'Critical'}`}
+              </Text>
+            </View>
+            <View style={styles.scoreFactor}>
+              <Text style={styles.scoreFactorDot}>
+                {exerciseDaysPerWeek >= 2 ? '🟢' : exerciseDaysPerWeek >= 1 ? '🟡' : '🔴'}
+              </Text>
+              <Text style={styles.scoreFactorText}>
+                {isTr
+                  ? `Egzersiz: ${exerciseDaysPerWeek >= 2 ? 'Aktif' : exerciseDaysPerWeek >= 1 ? 'Az' : 'Yok'}`
+                  : `Exercise: ${exerciseDaysPerWeek >= 2 ? 'Active' : exerciseDaysPerWeek >= 1 ? 'Low' : 'None'}`}
+              </Text>
+            </View>
+            <View style={styles.scoreFactor}>
+              <Text style={styles.scoreFactorDot}>
+                {weeklyRate <= 0.5 ? '🟢' : weeklyRate <= 1.0 ? '🟡' : '🔴'}
+              </Text>
+              <Text style={styles.scoreFactorText}>
+                {isTr
+                  ? `Kayıp hızı: ${weeklyRate <= 0.5 ? 'Normal' : weeklyRate <= 1.0 ? 'Orta' : 'Hızlı'}`
+                  : `Loss rate: ${weeklyRate <= 0.5 ? 'Normal' : weeklyRate <= 1.0 ? 'Moderate' : 'Fast'}`}
+              </Text>
+            </View>
+          </View>
+        </Card>
+
+        {/* ── Sustainability Score ── */}
+        <Card elevation="md" style={[styles.insightCardBlock, { backgroundColor: reboundInfo.bg }]}>
+          <View style={styles.riskCardRow}>
+            <Text style={styles.riskCardEmoji}>{reboundInfo.emoji}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.riskCardLabel, { color: reboundInfo.color }]}>{reboundInfo.label}</Text>
+              <Text style={styles.riskCardDesc}>{reboundInfo.desc}</Text>
+            </View>
+          </View>
+          {riskData.factors.length > 0 && (
+            <View style={styles.riskFactors}>
+              <Text style={styles.riskFactorsTitle}>{isTr ? 'Risk faktörleri:' : 'Risk factors:'}</Text>
+              {riskData.factors.map((f, i) => (
+                <Text key={i} style={styles.riskFactor}>✗ {f}</Text>
+              ))}
+            </View>
+          )}
+        </Card>
+
+        {/* ── Vücut Kompozisyonu / Body Composition ── */}
+        <SectionTitle
+          title={isTr ? '🥩 Vücut Kompozisyonu' : '🥩 Body Composition'}
+          style={styles.insightsSection}
+        />
+        {totalWeightLost > 0 ? (
+          <Card elevation="md" style={styles.insightCardBlock}>
+            <View style={styles.fatMuscleRow}>
+              <View style={[styles.fatMuscleCard, { backgroundColor: colors.successBg }]}>
+                <Text style={styles.fatMuscleIcon}>🟢</Text>
+                <Text style={[styles.fatMuscleValue, { color: '#065F46' }]}>{formatWeight(fatLostKg)}</Text>
+                <Text style={[styles.fatMuscleLabel, { color: '#059669' }]}>{isTr ? 'Yağ Kaybı' : 'Fat Lost'}</Text>
+                <Text style={[styles.fatMusclePct, { color: '#059669' }]}>%{fatPct}</Text>
+              </View>
+              <View style={[styles.fatMuscleCard, { backgroundColor: muscleTonePalette.bg }]}>
+                <Text style={styles.fatMuscleIcon}>{muscleEmoji}</Text>
+                <Text style={[styles.fatMuscleValue, { color: muscleTonePalette.fg, fontSize: 15 }]}>{muscleRiskLabel}</Text>
+                <Text style={[styles.fatMuscleLabel, { color: muscleTonePalette.fg }]}>{isTr ? 'Kas Riski' : 'Muscle Risk'}</Text>
+                <Text style={[styles.fatMusclePct, { color: muscleTonePalette.fg }]}>%{muscleRiskRange}</Text>
+              </View>
+            </View>
+
+            {/* Fat/muscle split bar */}
+            <View style={styles.splitBarRow}>
+              <View style={[styles.splitBarSeg, { flex: fatPct, backgroundColor: '#10B981' }]} />
+              <View style={[styles.splitBarSeg, { flex: musclePct, backgroundColor: musclePct >= 50 ? '#EF4444' : '#F59E0B' }]} />
+            </View>
+            <View style={styles.splitBarLegend}>
+              <Text style={styles.splitBarLegendText}>🟢 {isTr ? 'Yağ' : 'Fat'} %{fatPct}</Text>
+              <Text style={[styles.splitBarLegendText, { color: musclePct >= 50 ? '#EF4444' : '#D97706' }]}>
+                {musclePct >= 30 ? '⚠️' : '🟠'} {isTr ? 'Kas' : 'Muscle'} %{musclePct}
+              </Text>
+            </View>
+            <Text style={styles.estimateCaption}>
+              {isTr
+                ? 'ℹ️ Yağ/kas dağılımı bir tahmindir — protein alımı ve kilo kaybı hızına göre hesaplanır, vücut ölçümü değildir.'
+                : 'ℹ️ Fat/muscle split is an estimate — calculated from protein intake & weight-loss rate, not body measurements.'}
+            </Text>
+          </Card>
+        ) : (
+          <Card elevation="sm" style={styles.insightCardBlock} contentStyle={styles.emptyCardContent}>
+            <Text style={styles.emptyEmoji}>📉</Text>
+            <Text style={styles.emptyText}>
+              {isTr
+                ? 'Hesaplama için daha fazla kilo kaydı gerekiyor.'
+                : 'Log more weights to see your fat vs muscle breakdown.'}
+            </Text>
+          </Card>
+        )}
+
+        {/* ── 14 Günlük Projeksiyon / 14-Day Projection ── */}
+        {showProjection && (
+          <>
+            <SectionTitle
+              title={isTr ? '📈 14 Günlük Projeksiyon' : '📈 14-Day Projection'}
+              style={styles.insightsSection}
+            />
+            <Card elevation="md" style={styles.insightCardBlock}>
+              <Text style={styles.projectionRateLabel}>
+                {isTr
+                  ? `Günlük hız: ${formatWeight(dailyRate)}/gün · ${weightHistory.length} ölçümden hesaplandı`
+                  : `Daily rate: ${formatWeight(dailyRate)}/day · from ${weightHistory.length} weigh-ins`}
+              </Text>
+
+              {/* 3-path comparison table */}
+              <View style={styles.proj3Row}>
+                {/* Path A — current */}
+                <View style={[styles.proj3Col, { backgroundColor: musclePct >= 30 ? '#FEF2F2' : '#FFFBEB' }]}>
+                  <Text style={styles.proj3ColBadge}>{isTr ? 'Şu Gidişle' : 'As-Is'}</Text>
+                  <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
+                  <View style={styles.proj3BarWrap}>
+                    <View style={[styles.proj3BarFat, { flex: fatPct }]} />
+                    <View style={[styles.proj3BarMuscle, { flex: musclePct, backgroundColor: musclePct >= 30 ? '#EF4444' : '#F59E0B' }]} />
+                  </View>
+                  <Text style={styles.proj3Fat}>🟢 {isTr ? 'Yağ baskın' : 'Fat dominant'}</Text>
+                  <Text style={[styles.proj3Muscle, { color: musclePct >= 30 ? '#DC2626' : '#D97706' }]}>
+                    {musclePct >= 30 ? '🚨' : '⚠️'} {isTr
+                      ? `Kas riski ${musclePct >= 50 ? 'kritik' : 'yüksek'}`
+                      : `Muscle risk ${musclePct >= 50 ? 'critical' : 'high'}`}
+                  </Text>
+                  <Text style={[styles.proj3RiskRange, { color: musclePct >= 30 ? '#DC2626' : '#D97706' }]}>
+                    %{musclePct >= 50 ? '40–50' : '25–35'} {isTr ? 'kas olabilir' : 'may be muscle'}
+                  </Text>
+                </View>
+
+                {/* Path B — protein */}
+                <View style={[styles.proj3Col, { backgroundColor: '#F0FDF4' }]}>
+                  <Text style={[styles.proj3ColBadge, { color: '#065F46', backgroundColor: '#D1FAE5' }]}>
+                    {isTr ? '+ Protein' : '+ Protein'}
+                  </Text>
+                  <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
+                  <View style={styles.proj3BarWrap}>
+                    <View style={[styles.proj3BarFat, { flex: 95 }]} />
+                    <View style={[styles.proj3BarMuscle, { flex: 5, backgroundColor: '#10B981' }]} />
+                  </View>
+                  <Text style={styles.proj3Fat}>🟢 {isTr ? 'Yağ baskın' : 'Fat dominant'}</Text>
+                  <Text style={[styles.proj3Muscle, { color: '#059669' }]}>✅ {isTr ? 'Kas riski düşük' : 'Muscle risk low'}</Text>
+                  <Text style={[styles.proj3RiskRange, { color: '#059669' }]}>%5 {isTr ? 'kas olabilir' : 'may be muscle'}</Text>
+                </View>
+
+                {/* Path C — protein + exercise */}
+                <View style={[styles.proj3Col, { backgroundColor: '#EEF2FF', borderWidth: 1.5, borderColor: '#A5B4FC' }]}>
+                  <Text style={[styles.proj3ColBadge, { color: '#3730A3', backgroundColor: '#C7D2FE' }]}>
+                    {isTr ? '+ Egzersiz' : '+ Exercise'}
+                  </Text>
+                  <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
+                  <View style={styles.proj3BarWrap}>
+                    <View style={[styles.proj3BarFat, { flex: 98 }]} />
+                    <View style={[styles.proj3BarMuscle, { flex: 2, backgroundColor: '#6366F1' }]} />
+                  </View>
+                  <Text style={styles.proj3Fat}>🟢 {isTr ? 'Yağ baskın' : 'Fat dominant'}</Text>
+                  <Text style={[styles.proj3Muscle, { color: '#4F46E5' }]}>💪 {isTr ? 'Kas riski minimum' : 'Muscle risk minimal'}</Text>
+                  <Text style={[styles.proj3RiskRange, { color: '#4F46E5' }]}>%2 {isTr ? 'kas olabilir' : 'may be muscle'}</Text>
+                </View>
+              </View>
+
+              <Text style={styles.projDisclaimer}>
+                {isTr
+                  ? '📋 Bu tahminler protein alımı, kilo kaybı hızı ve aktivite düzeyine dayanmaktadır. Gerçek sonuçlar kişiye göre değişebilir.'
+                  : '📋 Estimates are based on protein intake, weight loss rate, and activity level. Actual results may vary.'}
+              </Text>
+            </Card>
+          </>
+        )}
+
+        {/* ── Haftalık Rapor / Weekly Report ── */}
+        <SectionTitle
+          title={isTr ? '📊 Haftalık Rapor' : '📊 Weekly Report'}
+          subtitle={weekRangeLabel}
+          style={styles.insightsSection}
+        />
+
+        {hasWeeklyData ? (
+          <>
+            {/* This-week hero summary */}
+            <GradientHero style={styles.weeklyHero}>
+              <Text style={styles.weeklyHeroTitle}>{isTr ? '📉 Bu Hafta' : '📉 This Week'}</Text>
+              <Text style={styles.weeklyHeroValue}>
+                {weeklyChange > 0 ? '−' : weeklyChange < 0 ? '+' : ''}{formatWeight(weeklyChangeAbs)}
+              </Text>
+              <Text style={styles.weeklyHeroSubtitle}>
+                {weeklyChange > 0
+                  ? (isTr ? 'Bu hafta kaybedildi' : 'Lost this week')
+                  : weeklyChange < 0
+                  ? (isTr ? 'Bu hafta alındı' : 'Gained this week')
+                  : (isTr ? 'Değişim yok' : 'No change this week')}
+              </Text>
+              <View style={styles.weeklyHeroDivider} />
+              <View style={styles.weeklyHeroStatsRow}>
+                <View style={styles.weeklyHeroStat}>
+                  <Text style={styles.weeklyHeroStatValue}>{formatWeight(Math.abs(totalWeightLost))}</Text>
+                  <Text style={styles.weeklyHeroStatLabel}>{isTr ? 'Toplam Kayıp' : 'Total Lost'}</Text>
+                </View>
+                <View style={styles.weeklyHeroStatDivider} />
+                <View style={styles.weeklyHeroStat}>
+                  <Text style={styles.weeklyHeroStatValue}>{formatWeight(totalFatLost)}</Text>
+                  <Text style={styles.weeklyHeroStatLabel}>{isTr ? 'Yağ Kaybı' : 'Fat Lost'}</Text>
+                </View>
+                <View style={styles.weeklyHeroStatDivider} />
+                <View style={styles.weeklyHeroStat}>
+                  <Text style={styles.weeklyHeroStatValue}>{avgPctLabel}%</Text>
+                  <Text style={styles.weeklyHeroStatLabel}>{isTr ? 'Ort. Protein' : 'Avg Protein'}</Text>
+                </View>
+              </View>
+            </GradientHero>
+
+            {/* Avg protein ring + muscle grade */}
+            <View style={styles.weeklyGridRow}>
+              <Card style={styles.weeklyGridCard} contentStyle={styles.weeklyGridCardInner}>
+                <Ring
+                  progress={avgPct}
+                  size={104}
+                  strokeWidth={11}
+                  color={avgPct >= 1 ? colors.success : avgPct >= 0.6 ? colors.warning : colors.danger}
+                  trackColor={colors.outlineVariant}
+                >
+                  <Text style={[styles.weeklyRingValue, { color: avgPct >= 1 ? colors.success : avgPct >= 0.6 ? colors.warning : colors.danger }]}>
+                    {avgPctLabel}%
+                  </Text>
+                  <Text style={styles.weeklyRingSub}>{proteinTarget}g</Text>
+                </Ring>
+                <Text style={styles.weeklyGridLabel}>{isTr ? 'Ort. Protein Hedefi' : 'Avg Protein Goal'}</Text>
+              </Card>
+
+              <Card style={styles.weeklyGridCard} contentStyle={styles.weeklyGridCardInner}>
+                <View style={[styles.gradeCircle, { backgroundColor: muscleTonePalette.bg }]}>
+                  <Text style={[styles.gradeLetter, { color: muscleTonePalette.fg }]}>{muscleGrade}</Text>
+                </View>
+                <Text style={styles.weeklyGridLabel}>{isTr ? 'Kas Koruma Notu' : 'Muscle Grade'}</Text>
+                <Badge
+                  label={`${muscleEmoji} ${muscleRiskLabel} ~%${muscleRiskRange}`}
+                  tone={muscleTone}
+                  style={{ marginTop: spacing.stackSm }}
+                />
+                <Text style={styles.estimateCaptionCentered}>
+                  {isTr ? 'Tahmin — protein alımı ve kilo eğiliminden' : 'Estimate — from protein intake & weight trend'}
+                </Text>
+              </Card>
+            </View>
+
+            {/* 7-day protein-vs-target bar chart */}
+            <Card elevation="md" style={styles.insightCardBlock}>
+              <View style={styles.proteinChartHeader}>
+                <Text style={styles.proteinChartSubtitle}>
+                  {isTr ? `Hedef: ${proteinTarget}g / gün` : `Target: ${proteinTarget}g / day`}
+                </Text>
+                <View style={styles.proteinChartLegend}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+                  <Text style={styles.legendText}>{isTr ? 'Hedefe ulaştı' : 'Met'}</Text>
+                  <View style={[styles.legendDot, { backgroundColor: colors.warning, marginLeft: 10 }]} />
+                  <Text style={styles.legendText}>{isTr ? 'Kısmen' : 'Partial'}</Text>
+                  <View style={[styles.legendDot, { backgroundColor: colors.danger, marginLeft: 10 }]} />
+                  <Text style={styles.legendText}>{isTr ? 'Düşük' : 'Low'}</Text>
+                </View>
+              </View>
+              {dailyProtein.map((day, i) => {
+                const pct = Math.min(day.ratio, 1);
+                const barColor = pct >= 1 ? colors.success : pct >= 0.6 ? colors.warning : colors.danger;
+                const bgColor = pct >= 1 ? colors.successBg : pct >= 0.6 ? colors.warningBg : colors.dangerBg;
+                return (
+                  <View key={i} style={[styles.proteinDayRow, i < dailyProtein.length - 1 && styles.proteinDayBorder]}>
+                    <Text style={styles.proteinDayName}>{day.dayName}</Text>
+                    <View style={styles.proteinBarContainer}>
+                      <View style={styles.proteinBarBg}>
+                        <View style={[styles.proteinBarFill, { width: day.hasData ? `${Math.round(pct * 100)}%` : '0%', backgroundColor: barColor }]} />
+                        <View style={styles.proteinBarTargetLine} />
+                      </View>
+                    </View>
+                    <View style={[styles.proteinGramsBadge, { backgroundColor: bgColor }]}>
+                      <Text style={[styles.proteinGramsText, { color: barColor }]}>
+                        {day.hasData ? `${day.grams}g` : '—'}
+                      </Text>
+                    </View>
+                    <Text style={[styles.proteinPctLabel, { color: barColor }]}>
+                      {day.hasData ? `${Math.round(pct * 100)}%` : ''}
+                    </Text>
+                  </View>
+                );
+              })}
+            </Card>
+
+            {/* AI insight cards */}
+            <SectionTitle
+              title={`🤖 ${isTr ? 'Öneriler' : 'Recommendations'}`}
+              subtitle={isTr ? 'Verilerinize göre üretildi' : 'Generated from your data'}
+              style={styles.insightsSection}
+            />
+            {recommendations.map((rec, i) => (
+              <Card key={i} style={styles.aiInsightCard} contentStyle={styles.aiInsightInner} elevation="sm">
+                <View style={styles.aiInsightBullet}>
+                  <Text style={styles.aiInsightBulletText}>{i + 1}</Text>
+                </View>
+                <Text style={styles.aiInsightText}>{rec}</Text>
+              </Card>
+            ))}
+
+            <Text style={styles.weeklyDisclaimer}>
+              {isTr
+                ? '📋 Kas riski tahminleri protein alımı ve kilo kaybı hızına dayanmaktadır. Gerçek sonuçlar kişiye göre değişebilir. Bu uygulama tıbbi tavsiye vermez.'
+                : '📋 Muscle risk estimates are based on protein intake and weight loss rate. Actual results may vary. This app does not provide medical advice.'}
+            </Text>
+          </>
+        ) : (
+          <Card elevation="sm" style={styles.insightCardBlock} contentStyle={styles.emptyCardContent}>
+            <Text style={styles.emptyEmoji}>📊</Text>
+            <Text style={styles.emptyText}>
+              {isTr
+                ? 'Haftalık rapor için en az 2 kilo girişi gerekiyor.'
+                : 'Log at least 2 weights to see your weekly report.'}
+            </Text>
           </Card>
         )}
 
@@ -1584,4 +2205,130 @@ const styles = StyleSheet.create({
   watchStatValue: { fontFamily: fontFamily.headingBold, fontSize: 22, fontWeight: '800', color: colors.success },
   watchStatLabel: { fontFamily: fontFamily.bodySemiBold, fontSize: 11, fontWeight: '600', color: colors.onSurfaceVariant, marginTop: 3, textAlign: 'center' },
   watchStatDivider: { width: 1, height: 40, backgroundColor: colors.outlineVariant },
+
+  // ════════════════════ DAILY INSIGHTS SECTIONS ════════════════════
+  insightsSection: { marginTop: spacing.stackLg },
+  insightCardBlock: { marginBottom: spacing.stackMd },
+
+  // Honest-estimate captions
+  estimateCaption: {
+    ...typography.labelSm, fontSize: 11, lineHeight: 15, color: colors.onSurfaceVariant,
+    fontStyle: 'italic', marginTop: 8,
+  },
+  estimateCaptionCentered: {
+    ...typography.labelSm, fontSize: 10, lineHeight: 13, color: colors.onSurfaceVariant,
+    fontStyle: 'italic', textAlign: 'center', marginTop: 6,
+  },
+
+  // ── Muscle Health score card ──
+  scoreRingHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 14 },
+  scoreRingTextCol: { flex: 1 },
+  scoreRingTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
+  scoreRingValue: { fontSize: 26, fontFamily: fontFamily.headingBold, fontWeight: '800' },
+  scoreRingMax: { fontSize: 11, fontFamily: fontFamily.bodySemiBold, color: colors.outline, marginTop: -2 },
+  scoreCardEmoji: { fontSize: 20 },
+  scoreCardLabel: { fontSize: 15, fontFamily: fontFamily.headingBold, fontWeight: '700', flexShrink: 1 },
+  scoreCardDesc: { fontSize: 13, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, marginTop: 3, lineHeight: 18 },
+  scoreFactors: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.outlineVariant,
+  },
+  scoreFactor: { alignItems: 'center', flex: 1 },
+  scoreFactorDot: { fontSize: 14, marginBottom: 2 },
+  scoreFactorText: { fontSize: 11, color: colors.onSurfaceVariant, textAlign: 'center', fontWeight: '500', fontFamily: fontFamily.bodySemiBold },
+
+  // ── Sustainability / risk card ──
+  riskCardRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  riskCardEmoji: { fontSize: 26 },
+  riskCardLabel: { fontSize: 15, fontFamily: fontFamily.headingBold, fontWeight: '700', marginBottom: 2 },
+  riskCardDesc: { fontSize: 13, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, lineHeight: 18 },
+  riskFactors: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.08)' },
+  riskFactorsTitle: { fontSize: 12, fontWeight: '700', color: colors.onSurface, marginBottom: 6, fontFamily: fontFamily.bodySemiBold },
+  riskFactor: { fontSize: 12, color: colors.onSurfaceVariant, marginBottom: 3, lineHeight: 16, fontFamily: fontFamily.body },
+
+  // ── Body composition ──
+  fatMuscleRow: { flexDirection: 'row', gap: 12, marginBottom: 12 },
+  fatMuscleCard: {
+    flex: 1, borderRadius: radii.card, padding: 14, alignItems: 'center', justifyContent: 'center',
+  },
+  fatMuscleIcon: { fontSize: 20, marginBottom: 4 },
+  fatMuscleValue: { fontSize: 26, fontFamily: fontFamily.headingBold, fontWeight: '800' },
+  fatMuscleLabel: { fontSize: 12, fontFamily: fontFamily.bodySemiBold, fontWeight: '600', marginTop: 2 },
+  fatMusclePct: { fontSize: 11, fontFamily: fontFamily.bodyBold, fontWeight: '700', marginTop: 2, opacity: 0.8 },
+  splitBarRow: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', marginBottom: 6 },
+  splitBarSeg: { height: '100%' },
+  splitBarLegend: { flexDirection: 'row', justifyContent: 'space-between' },
+  splitBarLegendText: { fontSize: 12, fontWeight: '600', color: colors.onSurface, fontFamily: fontFamily.bodySemiBold },
+
+  // ── 14-Day Projection ──
+  projectionRateLabel: { fontSize: 11, fontFamily: fontFamily.body, color: colors.outline, marginBottom: 12, textAlign: 'center' },
+  proj3Row: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  proj3Col: { flex: 1, borderRadius: 12, padding: 10, alignItems: 'center' },
+  proj3ColBadge: {
+    fontSize: 10, fontWeight: '800', fontFamily: fontFamily.bodySemiBold, color: '#92400E',
+    backgroundColor: '#FDE68A', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3,
+    marginBottom: 6, overflow: 'hidden',
+  },
+  proj3KgTotal: { fontSize: 18, fontFamily: fontFamily.headingBold, fontWeight: '800', color: colors.onSurface, marginBottom: 6 },
+  proj3BarWrap: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', width: '100%', marginBottom: 8 },
+  proj3BarFat: { backgroundColor: colors.success },
+  proj3BarMuscle: {},
+  proj3Fat: { fontSize: 11, fontWeight: '600', color: '#059669', textAlign: 'center', fontFamily: fontFamily.bodySemiBold },
+  proj3Muscle: { fontSize: 11, fontWeight: '700', textAlign: 'center', marginTop: 2, fontFamily: fontFamily.bodySemiBold },
+  proj3RiskRange: { fontSize: 10, fontWeight: '500', textAlign: 'center', marginTop: 1, fontFamily: fontFamily.body },
+  projDisclaimer: { marginTop: 10, fontSize: 11, color: '#9CA3AF', lineHeight: 15, textAlign: 'center', fontStyle: 'italic', fontFamily: fontFamily.body },
+
+  // ── Weekly Report hero ──
+  weeklyHero: { marginBottom: spacing.stackMd, alignItems: 'stretch' },
+  weeklyHeroTitle: { ...typography.labelMd, color: 'rgba(255,255,255,0.85)', marginBottom: spacing.stackSm, textAlign: 'center' },
+  weeklyHeroValue: { ...typography.displayStat, color: colors.white, textAlign: 'center' },
+  weeklyHeroSubtitle: { ...typography.labelMd, color: 'rgba(255,255,255,0.75)', textAlign: 'center', marginTop: 2 },
+  weeklyHeroDivider: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.25)', marginVertical: spacing.stackMd },
+  weeklyHeroStatsRow: { flexDirection: 'row', alignItems: 'center' },
+  weeklyHeroStat: { flex: 1, alignItems: 'center' },
+  weeklyHeroStatValue: { ...typography.headlineMd, fontSize: 20, color: colors.white },
+  weeklyHeroStatLabel: { ...typography.labelSm, color: 'rgba(255,255,255,0.7)', marginTop: 2, textAlign: 'center' },
+  weeklyHeroStatDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', backgroundColor: 'rgba(255,255,255,0.25)', marginVertical: 2 },
+
+  // ── Weekly grid (ring + grade) ──
+  weeklyGridRow: { flexDirection: 'row', gap: spacing.gutter, marginBottom: spacing.stackMd },
+  weeklyGridCard: { flex: 1 },
+  weeklyGridCardInner: { alignItems: 'center' },
+  weeklyGridLabel: { ...typography.labelMd, color: colors.onSurfaceVariant, marginTop: spacing.stackSm, textAlign: 'center' },
+  weeklyRingValue: { ...typography.headlineMd, fontSize: 22 },
+  weeklyRingSub: { ...typography.labelSm, color: colors.onSurfaceVariant, marginTop: 1 },
+  gradeCircle: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
+  gradeLetter: { ...typography.displayStat, fontSize: 38, lineHeight: 44 },
+
+  // ── 7-day protein chart ──
+  proteinChartHeader: { marginBottom: spacing.stackMd },
+  proteinChartSubtitle: { ...typography.labelMd, color: colors.onSurfaceVariant, marginBottom: spacing.stackSm },
+  proteinChartLegend: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
+  legendDot: { width: 10, height: 10, borderRadius: 5, marginRight: 4 },
+  legendText: { ...typography.labelSm, color: colors.onSurfaceVariant },
+  proteinDayRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, gap: 10 },
+  proteinDayBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.outlineVariant },
+  proteinDayName: { width: 32, ...typography.labelSm, fontWeight: '700', color: colors.onSurface },
+  proteinBarContainer: { flex: 1 },
+  proteinBarBg: { height: 10, borderRadius: 5, backgroundColor: colors.surfaceVariant, overflow: 'hidden', position: 'relative' },
+  proteinBarFill: { height: '100%', borderRadius: 5 },
+  proteinBarTargetLine: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 2, backgroundColor: 'rgba(0,0,0,0.12)' },
+  proteinGramsBadge: { borderRadius: radii.sm, paddingHorizontal: 8, paddingVertical: 3, minWidth: 44, alignItems: 'center' },
+  proteinGramsText: { ...typography.labelSm, fontWeight: '700' },
+  proteinPctLabel: { width: 34, ...typography.labelSm, fontWeight: '600', textAlign: 'right' },
+
+  // ── AI insight cards ──
+  aiInsightCard: { marginTop: spacing.stackSm },
+  aiInsightInner: { flexDirection: 'row', alignItems: 'flex-start' },
+  aiInsightBullet: {
+    width: 26, height: 26, borderRadius: 13, backgroundColor: colors.primary,
+    alignItems: 'center', justifyContent: 'center', marginRight: spacing.stackSm,
+  },
+  aiInsightBulletText: { ...typography.labelMd, color: colors.white, fontWeight: '700' },
+  aiInsightText: { ...typography.bodyMd, fontSize: 14, lineHeight: 20, color: colors.onSurface, flex: 1 },
+
+  weeklyDisclaimer: {
+    ...typography.labelSm, color: colors.outline, lineHeight: 16, textAlign: 'center',
+    fontStyle: 'italic', marginTop: spacing.stackMd, paddingHorizontal: spacing.stackSm,
+  },
 });

@@ -22,6 +22,15 @@
  *   saveWeightKg(kg)           -> Promise<boolean>      // WRITE body-mass sample
  */
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+
+// Expo Go cannot load Nitro/HealthKit native modules — requiring them throws
+// "NitroModules are not supported in Expo Go" (a red-box error). Detect Expo Go
+// and never touch the native module there, so the app runs in Expo Go for UI
+// testing. HealthKit works in dev/EAS builds.
+const IS_EXPO_GO =
+  Constants.appOwnership === 'expo' ||
+  Constants.executionEnvironment === 'storeClient';
 
 // ── Lazy, defensive require of the native module ─────────────────────────────
 let _hkModule = null;
@@ -30,7 +39,7 @@ let _hkResolved = false;
 function getHK() {
   if (_hkResolved) return _hkModule;
   _hkResolved = true;
-  if (Platform.OS !== 'ios') {
+  if (Platform.OS !== 'ios' || IS_EXPO_GO) {
     _hkModule = null;
     return null;
   }
