@@ -10,15 +10,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 
 import LoginScreen from '../screens/auth/LoginScreen';
-import RegisterScreen from '../screens/auth/RegisterScreen';
 import OnboardingScreen from '../screens/OnboardingScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import MealAnalysisScreen from '../screens/MealAnalysisScreen';
 import WeeklyReportScreen from '../screens/WeeklyReportScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import DietPlansScreen from '../screens/DietPlansScreen';
-import PaywallScreen from '../screens/PaywallScreen';
+import MedicationScreen from '../screens/MedicationScreen';
+import SocialScreen from '../screens/SocialScreen';
+import HealthLogScreen from '../screens/HealthLogScreen';
 import { useLanguage } from '../context/LanguageContext';
+import { theme } from '../theme';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -29,7 +31,6 @@ function AuthStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="Register" component={RegisterScreen} />
       <Stack.Screen name="Onboarding" component={OnboardingScreen} />
     </Stack.Navigator>
   );
@@ -38,30 +39,28 @@ function AuthStack() {
 // ─── Main Tab Navigator ──────────────────────────────────────────────────────
 
 function MainTabs() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isTr = language === 'tr';
   const insets = useSafeAreaInsets();
 
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: '#4F46E5',
-        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarActiveTintColor: theme.colors.primary,
+        tabBarInactiveTintColor: theme.colors.outline,
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
+          backgroundColor: theme.colors.surface,
           borderTopWidth: 1,
-          borderTopColor: '#F3F4F6',
-          paddingTop: 6,
+          borderTopColor: theme.colors.outlineVariant,
+          paddingTop: theme.spacing.stackSm,
           paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
           height: 60 + (insets.bottom > 0 ? insets.bottom : 10),
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.06,
-          shadowRadius: 8,
-          elevation: 10,
+          ...theme.shadow('md'),
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontFamily: theme.fontFamily.bodySemiBold,
+          fontSize: theme.typography.labelSm.fontSize,
           fontWeight: '600',
           marginTop: 2,
         },
@@ -71,9 +70,11 @@ function MainTabs() {
           if (route.name === 'Dashboard') {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'MealAnalysis') {
-            iconName = focused ? 'camera' : 'camera-outline';
+            iconName = focused ? 'fitness' : 'fitness-outline';
           } else if (route.name === 'WeeklyReport') {
             iconName = focused ? 'bar-chart' : 'bar-chart-outline';
+          } else if (route.name === 'Social') {
+            iconName = focused ? 'people' : 'people-outline';
           } else if (route.name === 'DietPlans') {
             iconName = focused ? 'restaurant' : 'restaurant-outline';
           } else if (route.name === 'Settings') {
@@ -92,12 +93,17 @@ function MainTabs() {
       <Tab.Screen
         name="MealAnalysis"
         component={MealAnalysisScreen}
-        options={{ tabBarLabel: t('mealAnalysis') }}
+        options={{ tabBarLabel: isTr ? 'Günlük Takip' : 'Daily Log' }}
       />
       <Tab.Screen
         name="WeeklyReport"
         component={WeeklyReportScreen}
         options={{ tabBarLabel: t('weeklyReport') }}
+      />
+      <Tab.Screen
+        name="Social"
+        component={SocialScreen}
+        options={{ tabBarLabel: isTr ? 'Topluluk' : 'Community' }}
       />
       <Tab.Screen
         name="DietPlans"
@@ -113,17 +119,14 @@ function MainTabs() {
   );
 }
 
-// ─── Main App Stack (tabs + modals like Paywall) ─────────────────────────────
+// ─── Main App Stack (tabs + pushed screens like Medication) ──────────────────
 
 function MainAppStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Tabs" component={MainTabs} />
-      <Stack.Screen
-        name="Paywall"
-        component={PaywallScreen}
-        options={{ presentation: 'modal' }}
-      />
+      <Stack.Screen name="Medication" component={MedicationScreen} />
+      <Stack.Screen name="HealthLog" component={HealthLogScreen} />
     </Stack.Navigator>
   );
 }
@@ -137,15 +140,29 @@ export default function AppNavigator() {
 
   useEffect(() => {
     if (user) {
-      AsyncStorage.getItem(`onboarding_complete_${user.uid}`)
-        .then((val) => {
-          setOnboardingComplete(val === 'true');
-          setOnboardingChecked(true);
-        })
-        .catch(() => {
+      (async () => {
+        try {
+          const flag = await AsyncStorage.getItem(`onboarding_complete_${user.uid}`);
+          if (flag === 'true') {
+            setOnboardingComplete(true);
+          } else {
+            // Fallback for returning users who installed before the completion flag was added:
+            // if they already have a saved profile with weight/height, skip onboarding
+            const profileRaw = await AsyncStorage.getItem(`user_profile_${user.uid}`);
+            const profile = profileRaw ? JSON.parse(profileRaw) : null;
+            if (profile?.weight && profile?.height) {
+              await AsyncStorage.setItem(`onboarding_complete_${user.uid}`, 'true');
+              setOnboardingComplete(true);
+            } else {
+              setOnboardingComplete(false);
+            }
+          }
+        } catch {
           setOnboardingComplete(false);
+        } finally {
           setOnboardingChecked(true);
-        });
+        }
+      })();
     } else {
       setOnboardingChecked(false);
       setOnboardingComplete(false);
@@ -155,7 +172,7 @@ export default function AppNavigator() {
   if (loading || (user && !onboardingChecked)) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4F46E5" />
+        <ActivityIndicator size="large" color={theme.colors.primary} />
       </View>
     );
   }
@@ -191,7 +208,7 @@ export default function AppNavigator() {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#F9FAFB',
+    backgroundColor: theme.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },

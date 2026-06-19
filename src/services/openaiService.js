@@ -1,4 +1,29 @@
-const OPENAI_API_KEY = '***REMOVED***';
+import { OPENAI_API_KEY } from '../config';
+
+function extractJSON(text) {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) {
+    try { return JSON.parse(match[0]); } catch {}
+  }
+  return JSON.parse(text);
+}
+
+function buildResult(parsed, isTr) {
+  if (!parsed || typeof parsed.protein === 'undefined') {
+    throw new Error('Invalid response structure');
+  }
+  return {
+    protein: Number(parsed.protein) || 0,
+    foodType: parsed.foodType || (isTr ? 'Karışık' : 'Mixed'),
+    portionSize: parsed.portionSize || (isTr ? 'Orta' : 'Medium'),
+    calories: Number(parsed.calories) || 0,
+    sufficient: Boolean(parsed.sufficient),
+    suggestion: parsed.suggestion || '',
+    muscleScore: parsed.muscleScore || 'B',
+    qualityTags: Array.isArray(parsed.qualityTags) ? parsed.qualityTags : [],
+    smartSwap: parsed.smartSwap || null,
+  };
+}
 
 async function imageUriToBase64(uri) {
   const response = await fetch(uri);
@@ -40,7 +65,7 @@ Kurallar:
 - calories: tahmini toplam kalori
 - sufficient: protein 25g ve üzerindeyse true
 - suggestion: kas koruma odaklı 1 cümle öneri
-- muscleScore: "A+" (protein>30g, kalori<600), "A" (protein 25-30g), "B" (protein 15-25g), "C" (protein<15g, karbonhidrat fazla), "D" (işlenmiş, protein yok)
+- proteinScore: "A+" (protein>30g, kalori<600), "A" (protein 25-30g), "B" (protein 15-25g), "C" (protein<15g, karbonhidrat fazla), "D" (işlenmiş, protein yok)
 - qualityTags: 2-3 kısa etiket, ör: ["Yüksek Protein", "Orta Kalori", "İyi Kurtarma"]
 - smartSwap: tek bir yiyecek değişimi önerisi veya null`
     : `You are a nutrition expert. Carefully analyze this food photo.
@@ -68,7 +93,7 @@ Rules:
 - calories: estimated total calories
 - sufficient: true if protein >= 25g
 - suggestion: 1 sentence muscle-preservation tip
-- muscleScore: "A+" (protein>30g, calories<600), "A" (protein 25-30g), "B" (protein 15-25g), "C" (protein<15g, high carbs), "D" (ultra-processed, minimal protein)
+- proteinScore: "A+" (protein>30g, calories<600), "A" (protein 25-30g), "B" (protein 15-25g), "C" (protein<15g, high carbs), "D" (ultra-processed, minimal protein)
 - qualityTags: 2-3 short tags e.g. ["High Protein", "Moderate Carbs", "Good for Recovery"]
 - smartSwap: one specific food substitution suggestion, or null`;
 
@@ -82,8 +107,9 @@ Rules:
     },
     body: JSON.stringify({
       model: 'gpt-4o',
-      max_tokens: 300,
+      max_tokens: 600,
       temperature: 0,
+      response_format: { type: 'json_object' },
       messages: [
         {
           role: 'user',
@@ -109,21 +135,15 @@ Rules:
 
   const data = await response.json();
   const raw = data.choices[0].message.content.trim();
-  const jsonStr = raw.replace(/```json|```/g, '').trim();
-  const parsed = JSON.parse(jsonStr);
-
-  return {
-    protein: Number(parsed.protein) || 0,
-    foodType: parsed.foodType || (isTr ? 'Karışık' : 'Mixed'),
-    portionSize: parsed.portionSize || (isTr ? 'Orta' : 'Medium'),
-    calories: Number(parsed.calories) || 0,
-    sufficient: Boolean(parsed.sufficient),
-    suggestion: parsed.suggestion || '',
-    suggestionTr: isTr ? parsed.suggestion : '',
-    muscleScore: parsed.muscleScore || 'B',
-    qualityTags: Array.isArray(parsed.qualityTags) ? parsed.qualityTags : [],
-    smartSwap: parsed.smartSwap || null,
-  };
+  try {
+    return buildResult(extractJSON(raw), isTr);
+  } catch {
+    throw new Error(
+      isTr
+        ? 'Yemek analiz edilemedi. Lütfen daha net bir fotoğraf çekin veya manuel giriş yapın.'
+        : 'Could not analyze meal. Please take a clearer photo or use manual entry.'
+    );
+  }
 }
 
 export async function analyzeMealWithText(description, language = 'en') {
@@ -153,7 +173,7 @@ Kurallar:
 - portionSize: "Küçük", "Orta" veya "Büyük"
 - calories: tahmini toplam kalori
 - sufficient: protein 25g ve üzerindeyse true
-- muscleScore: "A+" (>30g protein, <600 kcal), "A" (25-30g), "B" (15-25g), "C" (<15g), "D" (işlenmiş)
+- proteinScore: "A+" (>30g protein, <600 kcal), "A" (25-30g), "B" (15-25g), "C" (<15g), "D" (işlenmiş)
 - qualityTags: 2-3 kısa etiket`
     : `You are a nutrition expert. Analyze the meal described by the user.
 
@@ -178,7 +198,7 @@ Rules:
 - portionSize: "Small", "Medium", or "Large"
 - calories: estimated total calories
 - sufficient: true if protein >= 25g
-- muscleScore: "A+" (>30g, <600 kcal), "A" (25-30g), "B" (15-25g), "C" (<15g), "D" (ultra-processed)
+- proteinScore: "A+" (>30g, <600 kcal), "A" (25-30g), "B" (15-25g), "C" (<15g), "D" (ultra-processed)
 - qualityTags: 2-3 short tags`;
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -189,8 +209,9 @@ Rules:
     },
     body: JSON.stringify({
       model: 'gpt-4o',
-      max_tokens: 250,
+      max_tokens: 500,
       temperature: 0,
+      response_format: { type: 'json_object' },
       messages: [{ role: 'user', content: prompt }],
     }),
   });
@@ -202,17 +223,13 @@ Rules:
 
   const data = await response.json();
   const raw = data.choices[0].message.content.trim();
-  const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
-
-  return {
-    protein: Number(parsed.protein) || 0,
-    foodType: parsed.foodType || (isTr ? 'Karışık' : 'Mixed'),
-    portionSize: parsed.portionSize || (isTr ? 'Orta' : 'Medium'),
-    calories: Number(parsed.calories) || 0,
-    sufficient: Boolean(parsed.sufficient),
-    suggestion: parsed.suggestion || '',
-    muscleScore: parsed.muscleScore || 'B',
-    qualityTags: Array.isArray(parsed.qualityTags) ? parsed.qualityTags : [],
-    smartSwap: parsed.smartSwap || null,
-  };
+  try {
+    return buildResult(extractJSON(raw), isTr);
+  } catch {
+    throw new Error(
+      isTr
+        ? 'Yemek analiz edilemedi. Lütfen tekrar deneyin.'
+        : 'Could not analyze meal. Please try again.'
+    );
+  }
 }

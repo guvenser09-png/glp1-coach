@@ -8,14 +8,14 @@ const FOOD_TYPES = ['Protein-Rich', 'Mixed', 'Carb-Heavy', 'Vegetarian'];
 const PORTION_SIZES = ['Small', 'Medium', 'Large'];
 
 const SUGGESTIONS_EN = {
-  'Protein-Rich': 'Excellent choice! This meal supports muscle preservation on your GLP-1 journey.',
+  'Protein-Rich': 'Excellent choice! This meal supports muscle preservation and your protein goals.',
   Mixed: 'Good balance. Consider swapping a carb serving for extra protein next time.',
   'Carb-Heavy': 'This meal is high in carbs. Pair it with a protein source like Greek yogurt or eggs.',
   Vegetarian: 'Great plant-based choice! Add legumes or tofu to boost your protein intake.',
 };
 
 const SUGGESTIONS_TR = {
-  'Protein-Rich': 'Mükemmel seçim! Bu öğün GLP-1 sürecinizde kas korumanızı destekliyor.',
+  'Protein-Rich': 'Mükemmel seçim! Bu öğün kas korumanızı ve protein hedeflerinizi destekliyor.',
   Mixed: 'İyi denge. Bir sonraki öğünde bir karbonhidrat porsiyonunu ekstra proteinle değiştirmeyi düşünün.',
   'Carb-Heavy': 'Bu öğün yüksek karbonhidrat içeriyor. Yanına Yunan yoğurdu veya yumurta gibi bir protein kaynağı ekleyin.',
   Vegetarian: 'Harika bitkisel seçim! Protein alımınızı artırmak için baklagiller veya tofu ekleyin.',

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -20,9 +21,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { useSubscription } from '../context/SubscriptionContext';
+import { useUnit } from '../context/UnitContext';
 import CoachMessage from '../components/CoachMessage';
 import WeightChart from '../components/WeightChart';
+import DailyQuestsCard from '../components/DailyQuestsCard';
+import { useGamification } from '../context/GamificationContext';
+import FeatureTour from '../components/FeatureTour';
 import { sendCoachMessage } from '../services/coachChatService';
 import { scheduleDailyMotivation, schedulePersonalizedNotifications } from '../services/notificationService';
 import { Pedometer } from 'expo-sensors';
@@ -31,6 +35,7 @@ import {
   calculateMuscleScore,
   calculateReboundRisk,
   generateCoachMessage,
+  detectRebound,
 } from '../utils/heuristics';
 import {
   saveWeightLog,
@@ -38,11 +43,65 @@ import {
   getUserProfile,
   saveUserProfile,
 } from '../services/firestoreService';
+import {
+  getMedicationProfile,
+  getDaysUntilNextInjection,
+  getNextInjectionDate,
+} from '../services/medicationService';
+import {
+  isHealthAvailable,
+  requestHealthPermissions,
+  getTodayActiveEnergy,
+  getLatestHeartRate,
+  getRestingHeartRate,
+  saveWeightKg,
+  getLatestWeightKg,
+} from '../services/healthkitService';
+
+import { colors, semantic, spacing, radii, shadow, typography, fontFamily } from '../theme';
+import {
+  Card,
+  GradientHero,
+  StatCard,
+  PrimaryButton,
+  ProgressBar,
+  Ring,
+  Badge,
+} from '../components/ui';
 
 const PROTEIN_TARGET = 120;
 const EXERCISE_DAYS = 3;
 const screenWidth = Dimensions.get('window').width;
 const screenHeight = Dimensions.get('window').height;
+
+const PROTEIN_SUGGESTIONS = {
+  en: [
+    (g) => `${g}g left. Try: 150g chicken breast (35g) + Greek yogurt (20g).`,
+    (g) => `${g}g more protein needed. Grab 2 eggs (14g) + 100g tuna (22g) + yogurt (10g).`,
+    (g) => `Only ${g}g to go! A scoop of protein powder in milk gets you 25g instantly.`,
+    (g) => `${g}g remaining. Try: cottage cheese (150g = 18g) + 3 slices turkey (15g).`,
+    (g) => `${g}g left. 200g salmon for dinner = 40g protein — you'll crush your goal.`,
+    (g) => `Need ${g}g more. Edamame (200g = 17g) + cheese (30g = 8g) + hard-boiled eggs (14g).`,
+    (g) => `${g}g to go. A Greek yogurt bowl with almonds gives you ~25g protein fast.`,
+  ],
+  tr: [
+    (g) => `${g}g kalmış. Deneyin: 150g tavuk göğsü (35g) + Yunan yoğurdu (20g).`,
+    (g) => `${g}g daha protein lazım. 2 yumurta (14g) + 100g ton balığı (22g) + yoğurt (10g).`,
+    (g) => `Sadece ${g}g kaldı! Sütte protein tozu ile anında 25g protein alın.`,
+    (g) => `${g}g kalmış. Lor peyniri (150g = 18g) + 3 dilim hindi (15g) deneyin.`,
+    (g) => `${g}g kaldı. Akşam 200g somon = 40g protein — hedefinizi geçersiniz.`,
+    (g) => `${g}g daha lazım. Edamame (200g = 17g) + peynir (30g = 8g) + haşlanmış yumurta (14g).`,
+    (g) => `${g}g kaldı. Bademli Yunan yoğurdu kasesi hızlıca ~25g protein sağlar.`,
+  ],
+};
+
+function getRotatingSuggestion(remainingProtein, language) {
+  const hour = new Date().getHours();
+  const day = new Date().getDay();
+  const idx = (hour + day * 3) % PROTEIN_SUGGESTIONS.en.length;
+  const suggestions = PROTEIN_SUGGESTIONS[language] || PROTEIN_SUGGESTIONS.en;
+  return suggestions[idx](remainingProtein);
+}
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -97,8 +156,8 @@ function getMuscleScoreLabel(score, language) {
     emoji: '🚨',
     label: isTr ? 'Yüksek Risk' : 'High Risk',
     desc: isTr
-      ? 'Çok düşük protein alımı. Kas kaybı olası. Bugün proteine öncelik verin.'
-      : 'Very low protein intake. Muscle loss is likely. Prioritize protein today.',
+      ? 'Çok düşük protein alımı. Kas koruma için bugün proteine öncelik verin.'
+      : 'Very low protein intake. Prioritize protein today for muscle maintenance.',
     color: '#EF4444',
   };
 }
@@ -108,10 +167,10 @@ function getReboundRiskContent(level, language) {
   if (level === 'Low') {
     return {
       emoji: '🟢',
-      label: isTr ? 'Düşük Geri Alım Riski' : 'Low Rebound Risk',
+      label: isTr ? 'Yüksek Sürdürülebilirlik Skoru' : 'High Sustainability Score',
       desc: isTr
-        ? 'Alışkanlıklarınız kilo geri alımına karşı koruma sağlıyor. Devam edin!'
-        : 'Your habits are protecting against weight regain. Keep it up!',
+        ? 'Alışkanlıklarınız ilerlemenizi korumaya yardımcı oluyor. Devam edin!'
+        : 'Your habits are helping sustain your progress. Keep it up!',
       color: '#10B981',
       bg: '#ECFDF5',
     };
@@ -119,7 +178,7 @@ function getReboundRiskContent(level, language) {
   if (level === 'Medium') {
     return {
       emoji: '🟡',
-      label: isTr ? 'Orta Risk' : 'Moderate Risk',
+      label: isTr ? 'Orta Sürdürülebilirlik Skoru' : 'Moderate Sustainability Score',
       desc: isTr
         ? 'Bazı alışkanlıkların dikkat gerektiriyor. Protein ve harekete odaklan.'
         : 'Some habits need attention. Focus on protein and movement.',
@@ -129,16 +188,17 @@ function getReboundRiskContent(level, language) {
   }
   return {
     emoji: '🔴',
-    label: isTr ? 'Yüksek Geri Alım Riski' : 'High Rebound Risk',
+    label: isTr ? 'Düşük Sürdürülebilirlik Skoru' : 'Low Sustainability Score',
     desc: isTr
-      ? 'Hızlı kilo kaybı + düşük protein = yüksek geri alım riski. Hemen protein kaynaklarına yönelin.'
-      : 'Fast weight loss + low protein = high regain risk. Add protein sources now.',
+      ? 'Hızlı kilo kaybı + düşük protein = sürdürülebilirlik riski. Hemen protein kaynaklarına yönelin.'
+      : 'Fast weight loss + low protein = sustainability risk. Add protein sources now.',
     color: '#EF4444',
     bg: '#FEF2F2',
   };
 }
 
-// ─── GLP-1 After Tips data ───────────────────────────────────────────────────
+// ─── Rebound detection (P0 stopped-medication journey) ──────────────────────
+// ─── Sustaining Your Progress Tips data ─────────────────────────────────────
 
 const getAfterTips = (language) => {
   const isTr = language === 'tr';
@@ -148,8 +208,8 @@ const getAfterTips = (language) => {
       iconBg: '#ECFDF5',
       title: isTr ? 'Önce Protein' : 'Protein First',
       text: isTr
-        ? 'Her öğüne protein kaynağıyla başlayın. İlaç olmadan tokluk için her öğünde 25-35g protein hedefleyin.'
-        : 'Every meal should start with a protein source. Aim for 25-35g per meal to maintain satiety without the medication.',
+        ? 'Her öğüne protein kaynağıyla başlayın. Tokluk ve kas koruma için her öğünde 25-35g protein hedefleyin.'
+        : 'Every meal should start with a protein source. Aim for 25-35g per meal to maintain satiety and protect muscle.',
     },
     {
       icon: '🏋️',
@@ -157,23 +217,23 @@ const getAfterTips = (language) => {
       title: isTr ? 'Güç Egzersizi' : 'Strength Training',
       text: isTr
         ? 'Haftada 2-3 kez direnç antrenmanı kas kütlenizi korur ve metabolizmanızı hızlandırır.'
-        : '2-3x per week resistance training preserves muscle and boosts metabolism to prevent regain.',
+        : '2-3x per week resistance training preserves muscle and boosts metabolism.',
     },
     {
       icon: '🧘',
       iconBg: '#F0FDF4',
       title: isTr ? 'Yavaş Yiyin' : 'Eat Slowly',
       text: isTr
-        ? 'GLP-1 yeme hızınızı yavaşlattı. Bu alışkanlığı koruyun — tokluk sinyalleri beyne 20 dakikada ulaşır.'
-        : 'GLP-1 slowed your eating pace. Keep this habit — it takes 20 mins for fullness signals to reach your brain.',
+        ? 'Yavaş yemek tokluk sinyallerinin beyne ulaşmasına yardımcı olur — her öğünde en az 20 dakika ayırın.'
+        : 'Eating slowly helps fullness signals reach your brain — take at least 20 minutes for each meal.',
     },
     {
-      icon: '⚠️',
+      icon: '🌾',
       iconBg: '#FFFBEB',
       title: isTr ? 'Karbonhidratı İzleyin' : 'Watch Carbs',
       text: isTr
-        ? 'İlaç olmadan karbonhidrat isteği geri gelebilir. Rafine karbonhidratları kompleks olanlarla değiştirin (yulaf, kinoa, bulgur).'
-        : 'Without GLP-1, carb cravings may return. Swap refined carbs for complex ones (oats, quinoa, bulgur).',
+        ? 'Rafine karbonhidratları kompleks olanlarla değiştirin (yulaf, kinoa, bulgur). Bu, kan şekerini dengede tutar ve enerjiyi korur.'
+        : 'Swap refined carbs for complex ones (oats, quinoa, bulgur). This keeps blood sugar stable and energy levels steady.',
     },
   ];
 };
@@ -183,9 +243,11 @@ const getAfterTips = (language) => {
 export default function DashboardScreen({ navigation }) {
   const { user } = useAuth();
   const { t, language } = useLanguage();
-  const { checkAccess } = useSubscription();
+  const { formatWeight, formatHeight, toDisplayWeight, weightUnit, parseWeightToKg, weightRange, weightPlaceholder, weightLabel } = useUnit();
+  const { completeMission, earnXP } = useGamification();
 
   const [refreshing, setRefreshing] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   const [weightHistory, setWeightHistory] = useState([]);
   const [proteinLogs, setProteinLogs] = useState([]);
   const [profile, setProfile] = useState(null);
@@ -193,10 +255,70 @@ export default function DashboardScreen({ navigation }) {
   const [weightInput, setWeightInput] = useState('');
   const [savingWeight, setSavingWeight] = useState(false);
   const [todayMeals, setTodayMeals] = useState([]);
+  const [todayExercises, setTodayExercises] = useState([]);
   const [avgProteinRatio, setAvgProteinRatio] = useState(0);
 
   // Step counter
   const [stepCount, setStepCount] = useState(null);
+
+  // Medication tracking summary
+  const [medProfile, setMedProfile] = useState(null);
+  const [medLoaded, setMedLoaded] = useState(false);
+
+  const loadMedication = useCallback(async () => {
+    if (!user) return;
+    try {
+      const mp = await getMedicationProfile(user.uid);
+      setMedProfile(mp || null);
+    } catch {
+      setMedProfile(null);
+    } finally {
+      setMedLoaded(true);
+    }
+  }, [user]);
+
+  useEffect(() => { loadMedication(); }, [loadMedication]);
+  useFocusEffect(useCallback(() => { loadMedication(); }, [loadMedication]));
+
+  // ── Apple Watch / HealthKit summary ──
+  const [healthData, setHealthData] = useState(null); // { activeEnergy, heartRate, restingHeartRate }
+  const [healthAvailable, setHealthAvailable] = useState(false);
+
+  const loadHealth = useCallback(async () => {
+    try {
+      const available = await isHealthAvailable();
+      if (!available) {
+        setHealthAvailable(false);
+        setHealthData(null);
+        return;
+      }
+      const granted = await requestHealthPermissions();
+      if (!granted) {
+        setHealthAvailable(false);
+        setHealthData(null);
+        return;
+      }
+      const [activeEnergy, heartRate, restingHeartRate] = await Promise.all([
+        getTodayActiveEnergy(),
+        getLatestHeartRate(),
+        getRestingHeartRate(),
+      ]);
+      // Only mark available if we actually got at least one data point.
+      if (activeEnergy == null && heartRate == null && restingHeartRate == null) {
+        setHealthAvailable(false);
+        setHealthData(null);
+        return;
+      }
+      setHealthAvailable(true);
+      setHealthData({ activeEnergy, heartRate, restingHeartRate });
+    } catch {
+      setHealthAvailable(false);
+      setHealthData(null);
+    }
+  }, []);
+
+  useEffect(() => { loadHealth(); }, [loadHealth]);
+  useFocusEffect(useCallback(() => { loadHealth(); }, [loadHealth]));
 
   useEffect(() => {
     let subscription;
@@ -397,6 +519,34 @@ export default function DashboardScreen({ navigation }) {
     loadData();
   }, [loadData]);
 
+  // Reload data when screen comes into focus (e.g. after onboarding completes)
+  useFocusEffect(useCallback(() => {
+    loadData();
+  }, [loadData]));
+
+  useEffect(() => {
+    if (!user) return;
+    const exerciseKey = `daily_exercise_${user.uid}_${new Date().toISOString().split('T')[0]}`;
+    AsyncStorage.getItem(exerciseKey).then(raw => { if (raw) setTodayExercises(JSON.parse(raw)); });
+  }, [user]);
+
+  useEffect(() => {
+    if (analyzedTodayProtein > 0 && proteinTarget > 0 && analyzedTodayProtein >= proteinTarget) {
+      completeMission('reach_protein');
+    }
+  }, [analyzedTodayProtein, proteinTarget]);
+
+  useEffect(() => {
+    if (!user) return;
+    const key = `tour_shown_${user.uid}`;
+    AsyncStorage.getItem(key).then((v) => {
+      if (!v) {
+        setShowTour(true);
+        AsyncStorage.setItem(key, 'true');
+      }
+    });
+  }, [user]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadData();
@@ -404,29 +554,57 @@ export default function DashboardScreen({ navigation }) {
   }, [loadData]);
 
   async function handleSaveWeight() {
-    const w = parseFloat(weightInput.replace(',', '.'));
-    if (isNaN(w) || w < 30 || w > 300) {
-      Alert.alert('Invalid weight', 'Enter a weight between 30 and 300 kg.');
+    const wKg = parseWeightToKg(weightInput);
+    const raw = parseFloat(weightInput.replace(',', '.'));
+    if (!wKg || isNaN(raw) || raw < weightRange.min || raw > weightRange.max) {
+      Alert.alert(
+        isTr ? 'Geçersiz Kilo' : 'Invalid Weight',
+        isTr
+          ? `Lütfen ${weightRange.min}–${weightRange.max} ${weightUnit} arasında bir değer girin.`
+          : `Please enter a value between ${weightRange.min}–${weightRange.max} ${weightUnit}.`
+      );
       return;
     }
     setSavingWeight(true);
     try {
       if (user) {
-        await saveWeightLog(user.uid, w);
+        await saveWeightLog(user.uid, wKg);
 
-        // Update protein target based on new weight
-        const newProteinTarget = Math.round(w * 1.6);
-        const updatedProfile = { ...profile, weight: w, proteinTarget: newProteinTarget };
+        // Update protein target based on new weight (always stored in kg).
+        // Respect a user-chosen (custom) target — never auto-overwrite it.
+        // Otherwise recompute using the profile's proteinPerKg (defaults to 1.6).
+        const updatedProfile = { ...profile, weight: wKg };
+        if (!profile?.proteinTargetCustom) {
+          const perKg =
+            typeof profile?.proteinPerKg === 'number' && profile.proteinPerKg > 0
+              ? profile.proteinPerKg
+              : 1.6;
+          updatedProfile.proteinTarget = Math.round(wKg * perKg);
+        }
         await saveUserProfile(user.uid, updatedProfile);
         setProfile(updatedProfile);
       }
       const todayDate = new Date().toISOString().split('T')[0];
       setWeightHistory((prev) => {
         const updated = prev.filter((e) => e.date !== todayDate);
-        return [...updated, { date: todayDate, weight: w }].sort((a, b) =>
+        return [...updated, { date: todayDate, weight: wKg }].sort((a, b) =>
           a.date.localeCompare(b.date)
         );
       });
+      await completeMission('log_weight');
+      await earnXP(10, '⚖️ Weight logged!');
+
+      // Two-way Health sync: also write the weight to Apple Health.
+      // Fully guarded — never block the save flow or crash on Android / Expo Go
+      // (the service no-ops off iOS, and the fn may be absent in some builds).
+      try {
+        if (typeof saveWeightKg === 'function') {
+          await saveWeightKg(wKg);
+        }
+      } catch {
+        // Health write is best-effort — ignore failures.
+      }
+
       setLogWeightVisible(false);
       setWeightInput('');
     } catch {
@@ -436,12 +614,43 @@ export default function DashboardScreen({ navigation }) {
     }
   }
 
+  // Open the "log weight" modal. Nicety: if Apple Health is available, there's
+  // no entry yet today, and the input is empty, prefill with the latest Health
+  // weight (clearly editable). Fully guarded so it degrades gracefully on
+  // Android / Expo Go — the modal always opens regardless of Health state.
+  async function openLogWeight() {
+    setLogWeightVisible(true);
+    try {
+      const todayDate = new Date().toISOString().split('T')[0];
+      const alreadyLoggedToday = weightHistory.some((e) => e.date === todayDate);
+      if (
+        alreadyLoggedToday ||
+        weightInput ||
+        typeof isHealthAvailable !== 'function' ||
+        typeof getLatestWeightKg !== 'function'
+      ) {
+        return;
+      }
+      const available = await isHealthAvailable();
+      if (!available) return;
+      const latestKg = await getLatestWeightKg();
+      if (latestKg == null || !Number.isFinite(Number(latestKg))) return;
+      // Convert the kg value into the user's display unit and stringify it,
+      // matching the editable text field's expected format.
+      const display = toDisplayWeight(Number(latestKg));
+      if (display == null) return;
+      setWeightInput(String(display));
+    } catch {
+      // Prefill is best-effort — never block opening the modal.
+    }
+  }
+
   function openCoachChat() {
     setChatMessages([{
       role: 'assistant',
       content: isTr
-        ? `Merhaba! Ben senin GLP-1 koçunum 💪 Sana nasıl yardımcı olabilirim?`
-        : `Hey! I'm your GLP-1 coach 💪 How can I help you today?`,
+        ? `Merhaba! Ben GLP-1 Coach rehberinim 💪 Protein takibi ve fitness hedeflerin için sana nasıl yardımcı olabilirim?`
+        : `Hey! I'm your GLP-1 Coach Wellness Guide 💪 How can I help you with your protein tracking and fitness goals today?`,
     }]);
     setChatVisible(true);
   }
@@ -454,11 +663,31 @@ export default function DashboardScreen({ navigation }) {
     setChatInput('');
     setChatLoading(true);
     try {
+      // Last ~5 weight points (oldest→newest) so the coach can see the trend.
+      const weightTrend = weightHistory
+        .slice(-5)
+        .map((e) => ({ date: e.date, weight: e.weight }));
+      // Week-over-week change: previous weigh-in minus latest (positive = lost).
+      const weeklyChange =
+        weightHistory.length >= 2
+          ? parseFloat(
+              (
+                weightHistory[weightHistory.length - 2].weight -
+                weightHistory[weightHistory.length - 1].weight
+              ).toFixed(1)
+            )
+          : null;
       const reply = await sendCoachMessage({
         messages: updated,
         todayMeals,
         proteinTarget,
         language,
+        glp1Status: medProfile?.status ?? null,
+        drug: medProfile?.drug ?? null,
+        doseMg: medProfile?.doseMg ?? null,
+        currentWeight: currentWeight ?? null,
+        weeklyChange,
+        weightTrend,
       });
       setChatMessages(prev => [...prev, { role: 'assistant', content: reply }]);
       setTimeout(() => chatScrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -472,33 +701,79 @@ export default function DashboardScreen({ navigation }) {
     }
   }
 
-  const displayName = profile?.name || user?.email?.split('@')[0] || 'there';
+  const displayName = profile?.name || user?.displayName || user?.email?.split('@')[0] || 'there';
   const greeting = getGreeting(language);
 
-  // Last 8 weight entries for chart
-  const chartWeightData = weightHistory.slice(-8);
+  // Last 8 weight entries for chart — converted to display unit (kg or lbs)
+  const chartWeightData = weightHistory.slice(-8).map((entry) => ({
+    ...entry,
+    weight: toDisplayWeight(entry.weight),
+  }));
 
   const isTr = language === 'tr';
   const proteinMet = analyzedTodayProtein >= proteinTarget;
   const remainingProtein = proteinTarget - analyzedTodayProtein;
   const proteinProgressPct = proteinTarget > 0 ? Math.min(analyzedTodayProtein / proteinTarget, 1) : 0;
 
-  // BMI
   const bmiWeight = currentWeight ?? profile?.weight ?? null;
   const bmiHeight = profile?.height ?? null;
-  const bmi = bmiWeight && bmiHeight
-    ? parseFloat((bmiWeight / Math.pow(bmiHeight / 100, 2)).toFixed(1))
-    : null;
-  const bmiInfo = (() => {
-    if (!bmi) return null;
-    if (bmi < 18.5) return { label: isTr ? 'Zayıf' : 'Underweight', color: '#3B82F6' };
-    if (bmi < 25)   return { label: isTr ? 'Normal' : 'Normal',      color: '#10B981' };
-    if (bmi < 30)   return { label: isTr ? 'Fazla Kilolu' : 'Overweight', color: '#F59E0B' };
-    return           { label: isTr ? 'Obez' : 'Obese',               color: '#EF4444' };
+
+  // ── Medication summary (next injection) ──
+  const medActive = medProfile && medProfile.status === 'currentlyUsing';
+  // P0: stopped / planning-to-stop journeys reframe the screen around being
+  // medication-free + maintenance rather than the next injection.
+  const medStopped =
+    medProfile &&
+    (medProfile.status === 'recentlyStopped' || medProfile.status === 'planningToStop');
+  const medPlanning = medProfile && medProfile.status === 'planningToStop';
+
+  // Days since stopping the medication (best-effort from startDate / stopDate).
+  const daysSinceStopped = (() => {
+    if (!medStopped) return null;
+    const ref = medProfile?.stopDate || medProfile?.startDate;
+    if (!ref) return null;
+    const refDate = new Date(ref);
+    if (Number.isNaN(refDate.getTime())) return null;
+    const ms = Date.now() - refDate.getTime();
+    return Math.max(0, Math.floor(ms / (24 * 60 * 60 * 1000)));
   })();
+
+  // Rebound detection over the saved weight history (oldest→newest).
+  const reboundAlert = medStopped
+    ? detectRebound(weightHistory)
+    : { alert: 'none', gainedKg: 0 };
+  const showReboundAlert =
+    medStopped && (reboundAlert.alert === 'watch' || reboundAlert.alert === 'high');
+  const daysUntilInjection = medActive ? getDaysUntilNextInjection(medProfile) : null;
+  const nextInjectionDate = medActive ? getNextInjectionDate(medProfile) : null;
+  const weekdayNames = isTr
+    ? ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi']
+    : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const nextInjectionLabel = (() => {
+    if (daysUntilInjection == null) return null;
+    if (daysUntilInjection === 0) return isTr ? 'Bugün' : 'Today';
+    if (daysUntilInjection === 1) return isTr ? 'Yarın' : 'Tomorrow';
+    if (nextInjectionDate) return weekdayNames[nextInjectionDate.getDay()];
+    return isTr ? `${daysUntilInjection} gün içinde` : `in ${daysUntilInjection} days`;
+  })();
+  const medTone = daysUntilInjection === 0 ? 'warning' : 'info';
+
+  function goToMedication() {
+    // 'Medication' route may not be registered in every build — guard so we never crash.
+    try {
+      navigation.navigate('Medication');
+    } catch {
+      try { navigation.navigate('Settings'); } catch {}
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <FeatureTour
+        visible={showTour}
+        language={language}
+        onFinish={() => setShowTour(false)}
+      />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -507,15 +782,24 @@ export default function DashboardScreen({ navigation }) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4F46E5" />
         }
       >
+        {/* Medical disclaimer banner */}
+        <View style={styles.medDisclaimer}>
+          <Text style={styles.medDisclaimerText}>
+            {isTr
+              ? 'ℹ️ Bu uygulama yaşam tarzı desteği sağlar. Tıbbi tavsiye vermez. Sağlık kararları için doktorunuza danışın.'
+              : 'ℹ️ This app provides lifestyle support only, not medical advice. Consult your doctor for health decisions.'}
+          </Text>
+        </View>
+
         {/* ── Hero Card ── */}
-        <View style={styles.heroCard}>
+        <GradientHero style={styles.heroCard}>
           <View style={styles.heroTop}>
             <View style={{ flex: 1 }}>
               <Text style={styles.heroGreeting}>
                 {greeting}, {displayName}! 💪
               </Text>
               {currentWeight != null ? (
-                <Text style={styles.heroWeight}>{currentWeight} kg</Text>
+                <Text style={styles.heroWeight}>{formatWeight(currentWeight)}</Text>
               ) : (
                 <Text style={styles.heroWeightEmpty}>
                   {isTr ? 'Kilo girilmedi' : 'No weight logged'}
@@ -532,7 +816,7 @@ export default function DashboardScreen({ navigation }) {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.heroLogBtn}
-                onPress={() => setLogWeightVisible(true)}
+                onPress={openLogWeight}
                 activeOpacity={0.85}
               >
                 <Text style={styles.heroLogBtnText}>{t('logWeight')}</Text>
@@ -543,41 +827,201 @@ export default function DashboardScreen({ navigation }) {
             <View style={[styles.heroPill, { backgroundColor: dailyRate > 0 ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)', borderColor: dailyRate > 0 ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)' }]}>
               <Text style={[styles.heroPillText, { color: dailyRate > 0 ? '#6EE7B7' : '#FCA5A5' }]}>
                 {dailyRate > 0
-                  ? `▼ ${dailyRate} kg/${isTr ? 'gün' : 'day'}`
-                  : `▲ ${Math.abs(dailyRate)} kg/${isTr ? 'gün' : 'day'}`}
+                  ? `▼ ${formatWeight(dailyRate)}/${isTr ? 'gün' : 'day'}`
+                  : `▲ ${formatWeight(Math.abs(dailyRate))}/${isTr ? 'gün' : 'day'}`}
               </Text>
             </View>
           )}
+        </GradientHero>
+
+        {/* ── Medication-free journey rebound alert (P0) ── */}
+        {medLoaded && showReboundAlert && (
+          <Card
+            padding={16}
+            style={[
+              styles.reboundCard,
+              {
+                backgroundColor: reboundAlert.alert === 'high' ? colors.dangerBg : colors.warningBg,
+                borderColor: reboundAlert.alert === 'high' ? '#FCA5A5' : '#FDE68A',
+              },
+            ]}
+          >
+            <View style={styles.reboundRow}>
+              <Text style={styles.reboundEmoji}>
+                {reboundAlert.alert === 'high' ? '🚨' : '⚠️'}
+              </Text>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.reboundTitle,
+                    { color: reboundAlert.alert === 'high' ? '#DC2626' : '#D97706' },
+                  ]}
+                >
+                  {isTr
+                    ? `Kilo yukarı yönlü — protein ve hareketi sıkılaştır`
+                    : `Weight trending up — tighten protein + movement`}
+                </Text>
+                <Text style={styles.reboundDesc}>
+                  {isTr
+                    ? `En düşük kilonun ${formatWeight(reboundAlert.gainedKg)} üzerindesin. Bu çok normal ve geri dönülebilir 💚 Birkaç günlüğüne protein hedefine sıkı tutun ve günlük yürüyüşü artırın — bu küçük dalgalanmayı dengelemeye yardımcı olur.`
+                    : `You're ${formatWeight(reboundAlert.gainedKg)} above your lowest weight. This is completely normal and reversible 💚 Lock in your protein target for a few days and add a daily walk — that's usually enough to settle a small bounce.`}
+                </Text>
+                <TouchableOpacity style={styles.reboundBtn} onPress={openCoachChat}>
+                  <Text style={styles.reboundBtnText}>
+                    {isTr ? 'Koçtan plan al' : 'Get a plan from Coach'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Card>
+        )}
+
+        {/* ── Medication / Next Injection Summary ── */}
+        {medLoaded && (
+          medStopped ? (
+            <Card onPress={goToMedication} padding={16} style={styles.medCard}>
+              <View style={styles.medRow}>
+                <View style={[styles.medIconCircle, { backgroundColor: colors.successBg }]}>
+                  <Text style={styles.medIconEmoji}>🌱</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.medTitle}>
+                    {medPlanning
+                      ? (isTr ? 'İlaçsız yolculuğa hazırlık' : 'Preparing for your medication-free journey')
+                      : (isTr ? 'İlaçsız yolculuk' : 'Medication-free journey')}
+                  </Text>
+                  <Text style={styles.medSub}>
+                    {medPlanning
+                      ? (isTr
+                          ? 'Kas koruma + protein alışkanlığı bırakmayı kolaylaştırır'
+                          : 'Muscle maintenance + protein habits make stopping easier')
+                      : daysSinceStopped != null
+                        ? (isTr
+                            ? `${daysSinceStopped} gündür ilaçsız · sürdürme odağı`
+                            : `${daysSinceStopped} days medication-free · maintenance focus`)
+                        : (isTr
+                            ? 'Sürdürme odağı: protein + hareket'
+                            : 'Maintenance focus: protein + movement')}
+                  </Text>
+                </View>
+                {!medPlanning && daysSinceStopped != null && (
+                  <Badge
+                    label={isTr ? `${daysSinceStopped} gün` : `${daysSinceStopped}d`}
+                    tone="success"
+                  />
+                )}
+                {medPlanning && <Text style={styles.medChevron}>›</Text>}
+              </View>
+            </Card>
+          ) : medActive ? (
+            <Card onPress={goToMedication} padding={16} style={styles.medCard}>
+              <View style={styles.medRow}>
+                <View style={[styles.medIconCircle, { backgroundColor: semantic[medTone].bg }]}>
+                  <Text style={styles.medIconEmoji}>💉</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.medTitle}>
+                    {isTr ? 'Sonraki enjeksiyon' : 'Next injection'}
+                  </Text>
+                  <Text style={styles.medSub}>
+                    {medProfile?.drug || (isTr ? 'İlaç' : 'Medication')}
+                    {medProfile?.dose ? ` · ${medProfile.dose}` : ''}
+                  </Text>
+                </View>
+                {nextInjectionLabel != null && (
+                  <Badge label={nextInjectionLabel} tone={medTone} />
+                )}
+              </View>
+            </Card>
+          ) : (
+            <Card onPress={goToMedication} padding={16} style={styles.medCard}>
+              <View style={styles.medRow}>
+                <View style={[styles.medIconCircle, { backgroundColor: colors.infoBg }]}>
+                  <Text style={styles.medIconEmoji}>💊</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.medTitle}>
+                    {isTr ? 'İlaç takibini ayarla' : 'Set up medication tracking'}
+                  </Text>
+                  <Text style={styles.medSub}>
+                    {isTr
+                      ? 'Enjeksiyon günlerini ve hatırlatıcıları takip et'
+                      : 'Track your injection days and reminders'}
+                  </Text>
+                </View>
+                <Text style={styles.medChevron}>›</Text>
+              </View>
+            </Card>
+          )
+        )}
+
+        {/* ── Body Stats Row (Weight / Height) — always visible ── */}
+        <View style={styles.statCardsRow}>
+          <StatCard
+            style={styles.statCardItem}
+            icon={<Text style={styles.statEmoji}>⚖️</Text>}
+            label={isTr ? 'Kilo' : 'Weight'}
+            value={bmiWeight != null ? toDisplayWeight(bmiWeight) : '—'}
+            unit={bmiWeight != null ? weightUnit : undefined}
+          />
+          <StatCard
+            style={styles.statCardItem}
+            icon={<Text style={styles.statEmoji}>📏</Text>}
+            label={isTr ? 'Boy' : 'Height'}
+            value={bmiHeight != null ? formatHeight(bmiHeight) : '—'}
+          />
         </View>
 
-        {/* ── Body Stats Row (Weight / Height / BMI) ── */}
-        {(bmiWeight || bmiHeight) && (
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statEmoji}>⚖️</Text>
-              <Text style={styles.statValue}>{bmiWeight ?? '—'}</Text>
-              <Text style={styles.statUnit}>kg</Text>
-              <Text style={styles.statLabel}>{isTr ? 'Kilo' : 'Weight'}</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statCard}>
-              <Text style={styles.statEmoji}>📏</Text>
-              <Text style={styles.statValue}>{bmiHeight ?? '—'}</Text>
-              <Text style={styles.statUnit}>cm</Text>
-              <Text style={styles.statLabel}>{isTr ? 'Boy' : 'Height'}</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statCard}>
-              <Text style={styles.statEmoji}>🧮</Text>
-              <Text style={[styles.statValue, bmiInfo ? { color: bmiInfo.color } : null]}>
-                {bmi ?? '—'}
+        {/* ── Apple Watch / HealthKit Card (iOS only, hidden if unavailable) ── */}
+        {healthAvailable && healthData && (
+          <Card padding={16} style={styles.watchCard}>
+            <View style={styles.watchHeader}>
+              <Text style={styles.watchEmoji}>⌚️</Text>
+              <Text style={styles.watchTitle}>
+                {isTr ? 'Apple Watch' : 'Apple Watch'}
               </Text>
-              <Text style={styles.statUnit}>VKİ</Text>
-              {bmiInfo && (
-                <Text style={[styles.statBmiTag, { color: bmiInfo.color }]}>{bmiInfo.label}</Text>
-              )}
             </View>
-          </View>
+            <View style={styles.watchStatsRow}>
+              <View style={styles.watchStat}>
+                <Text style={styles.watchStatEmoji}>🔥</Text>
+                <Text style={styles.watchStatValue}>
+                  {healthData.activeEnergy != null ? healthData.activeEnergy : '—'}
+                  {healthData.activeEnergy != null && (
+                    <Text style={styles.watchStatUnit}> kcal</Text>
+                  )}
+                </Text>
+                <Text style={styles.watchStatLabel}>
+                  {isTr ? 'Bugün yakılan' : 'Burned today'}
+                </Text>
+              </View>
+              <View style={styles.watchStatDivider} />
+              <View style={styles.watchStat}>
+                <Text style={styles.watchStatEmoji}>❤️</Text>
+                <Text style={styles.watchStatValue}>
+                  {healthData.heartRate != null
+                    ? healthData.heartRate
+                    : healthData.restingHeartRate != null
+                      ? healthData.restingHeartRate
+                      : '—'}
+                  {(healthData.heartRate != null || healthData.restingHeartRate != null) && (
+                    <Text style={styles.watchStatUnit}> bpm</Text>
+                  )}
+                </Text>
+                <Text style={styles.watchStatLabel}>
+                  {healthData.heartRate != null
+                    ? (isTr ? 'Son nabız' : 'Latest HR')
+                    : (isTr ? 'Dinlenme nabzı' : 'Resting HR')}
+                </Text>
+              </View>
+            </View>
+            {healthData.heartRate != null && healthData.restingHeartRate != null && (
+              <Text style={styles.watchRestingLine}>
+                {isTr
+                  ? `❤️ Dinlenme nabzı: ${healthData.restingHeartRate} bpm`
+                  : `❤️ Resting heart rate: ${healthData.restingHeartRate} bpm`}
+              </Text>
+            )}
+          </Card>
         )}
 
         {/* ── Step Counter ── */}
@@ -613,9 +1057,12 @@ export default function DashboardScreen({ navigation }) {
                   <Text style={styles.stepMsg}>{message}</Text>
                 </View>
               </View>
-              <View style={styles.stepBarBg}>
-                <View style={[styles.stepBarFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: barColor }]} />
-              </View>
+              <ProgressBar
+                progress={pct}
+                color={barColor}
+                trackColor="rgba(0,0,0,0.08)"
+                height={8}
+              />
             </View>
           );
         })()}
@@ -638,39 +1085,20 @@ export default function DashboardScreen({ navigation }) {
           </Text>
         </View>
 
-        {/* ── Coach Message ── */}
-        {checkAccess('coach_message') ? (
-          <CoachMessage message={coachMsg} />
-        ) : (
-          <View style={styles.lockedCard}>
-            <View style={styles.lockedContent}>
-              <Text style={styles.lockedEmoji}>🤖</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.lockedTitle}>{t('coachTitle')}</Text>
-                <Text style={styles.lockedSub}>{t('locked')}</Text>
-              </View>
-            </View>
-            <View style={styles.lockedOverlay}>
-              <Text style={styles.lockedOverlayIcon}>🔒</Text>
-              <TouchableOpacity
-                style={styles.upgradeBtn}
-                onPress={() =>
-                  navigation.navigate('Paywall', {
-                    featureKey: 'coach_message',
-                    featureName: t('coachTitle'),
-                  })
-                }
-                activeOpacity={0.85}
-              >
-                <Text style={styles.upgradeBtnText}>{t('upgrade')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+        {/* ── Coach Message ── (always available — paywall removed) */}
+        <CoachMessage message={coachMsg} />
+
+        {/* ── Daily Quests & Gamification ── */}
+        <DailyQuestsCard
+          proteinPct={Math.round(proteinProgressPct * 100)}
+          mealCount={todayMeals.length}
+          loggedWorkout={todayExercises.length > 0}
+          loggedWeight={weightHistory.some(e => e.date === today)}
+        />
 
         {/* ── Weight History Chart ── */}
-        <SectionTitle title={isTr ? '📉 Kilo Geçmişi (kg)' : '📉 Weight Progress'} />
-        <WeightChart data={chartWeightData} height={220} />
+        <SectionTitle title={isTr ? `📉 Kilo Geçmişi (${weightUnit})` : '📉 Weight Progress'} />
+        <WeightChart data={chartWeightData} height={220} weightUnit={weightUnit} language={language} />
 
         {/* ── Fat vs Muscle Loss ── */}
         <SectionTitle title={isTr ? '🥩 Vücut Kompozisyonu' : '🥩 Body Composition'} />
@@ -687,20 +1115,20 @@ export default function DashboardScreen({ navigation }) {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.muscleAlertTitle, { color: musclePct >= 50 ? '#DC2626' : '#D97706' }]}>
                     {isTr
-                      ? `Kas kaybı ${musclePct >= 50 ? 'kritik' : 'yüksek'} risk — kaybın %${musclePct > 40 ? '40–50' : '25–35'}'i kas olabilir`
-                      : `Muscle loss ${musclePct >= 50 ? 'critical' : 'high'} risk — ${musclePct > 40 ? '40–50' : '25–35'}% of loss may be muscle`}
+                      ? `Kas korumayı desteklemek için protein alımınızı yüksek tutun`
+                      : `Keep protein high to support muscle maintenance`}
                   </Text>
                   <Text style={styles.muscleAlertDesc}>
                     {isTr
-                      ? `Metabolizmanız yavaşlayabilir ve kilo geri alım riski artabilir. Protein + direnç egzersizi kombinasyonu bu riski ciddi ölçüde azaltabilir.`
-                      : `Your metabolism may slow and rebound risk may increase. Protein + resistance exercise can significantly reduce this risk.`}
+                      ? `Metabolizmanız yavaşlayabilir ve ilerlemeniz sekteye uğrayabilir. Protein + direnç egzersizi kombinasyonu bu riski ciddi ölçüde azaltabilir.`
+                      : `Your metabolism may slow and progress sustainability may be affected. Protein + resistance exercise can significantly reduce this risk.`}
                   </Text>
                 </View>
                 <TouchableOpacity style={[
                   styles.muscleAlertBtn,
                   { backgroundColor: musclePct >= 50 ? '#DC2626' : '#D97706' },
                 ]} onPress={openCoachChat}>
-                  <Text style={styles.muscleAlertBtnText}>{isTr ? 'Koç' : 'Coach'}</Text>
+                  <Text style={styles.muscleAlertBtnText}>{isTr ? 'Rehber' : 'Guide'}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -708,7 +1136,7 @@ export default function DashboardScreen({ navigation }) {
             <View style={styles.fatMuscleRow}>
               <View style={[styles.fatMuscleCard, { backgroundColor: '#ECFDF5' }]}>
                 <Text style={styles.fatMuscleIcon}>🟢</Text>
-                <Text style={[styles.fatMuscleValue, { color: '#065F46' }]}>{fatLostKg} kg</Text>
+                <Text style={[styles.fatMuscleValue, { color: '#065F46' }]}>{formatWeight(fatLostKg)}</Text>
                 <Text style={[styles.fatMuscleLabel, { color: '#059669' }]}>
                   {isTr ? 'Yağ Kaybı' : 'Fat Lost'}
                 </Text>
@@ -741,6 +1169,11 @@ export default function DashboardScreen({ navigation }) {
                 {musclePct >= 30 ? '⚠️' : '🟠'} {isTr ? 'Kas' : 'Muscle'} %{musclePct}
               </Text>
             </View>
+            <Text style={styles.estimateCaption}>
+              {isTr
+                ? 'ℹ️ Yağ/kas dağılımı bir tahmindir — protein alımı ve kilo kaybı hızına göre hesaplanır, vücut ölçümü değildir.'
+                : 'ℹ️ Fat/muscle split is an estimate — calculated from protein intake & weight-loss rate, not body measurements.'}
+            </Text>
           </>
         ) : (
           <View style={styles.emptyCard}>
@@ -757,11 +1190,17 @@ export default function DashboardScreen({ navigation }) {
           <>
             <SectionTitle title={isTr ? '📈 14 Günlük Projeksiyon' : '📈 14-Day Projection'} />
 
+            <Text style={styles.estimateCaption}>
+              {isTr
+                ? 'ℹ️ Bu projeksiyon bir tahmindir — protein alımı ve kilo kaybı hızına dayanır, vücut ölçümü değildir. Gerçek sonuçlar değişebilir.'
+                : 'ℹ️ This projection is an estimate — based on protein intake & weight-loss rate, not body measurements. Actual results may vary.'}
+            </Text>
+
             <View style={styles.projectionCard}>
               <Text style={styles.projectionRateLabel}>
                 {isTr
-                  ? `Günlük hız: ${dailyRate} kg/gün · ${weightHistory.length} ölçümden hesaplandı`
-                  : `Daily rate: ${dailyRate} kg/day · from ${weightHistory.length} weigh-ins`}
+                  ? `Günlük hız: ${formatWeight(dailyRate)}/${isTr ? 'gün' : 'day'} · ${weightHistory.length} ölçümden hesaplandı`
+                  : `Daily rate: ${formatWeight(dailyRate)}/day · from ${weightHistory.length} weigh-ins`}
               </Text>
 
               {/* ── 3-path comparison table ── */}
@@ -772,7 +1211,7 @@ export default function DashboardScreen({ navigation }) {
                   <Text style={styles.proj3ColBadge}>
                     {isTr ? 'Şu Gidişle' : 'As-Is'}
                   </Text>
-                  <Text style={styles.proj3KgTotal}>~{projected14} kg</Text>
+                  <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
                   <View style={styles.proj3BarWrap}>
                     <View style={[styles.proj3BarFat, { flex: fatPct }]} />
                     <View style={[styles.proj3BarMuscle, {
@@ -796,7 +1235,7 @@ export default function DashboardScreen({ navigation }) {
                   <Text style={[styles.proj3ColBadge, { color: '#065F46', backgroundColor: '#D1FAE5' }]}>
                     {isTr ? '+ Protein' : '+ Protein'}
                   </Text>
-                  <Text style={styles.proj3KgTotal}>~{projected14} kg</Text>
+                  <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
                   <View style={styles.proj3BarWrap}>
                     <View style={[styles.proj3BarFat, { flex: 95 }]} />
                     <View style={[styles.proj3BarMuscle, { flex: 5, backgroundColor: '#10B981' }]} />
@@ -815,7 +1254,7 @@ export default function DashboardScreen({ navigation }) {
                   <Text style={[styles.proj3ColBadge, { color: '#3730A3', backgroundColor: '#C7D2FE' }]}>
                     {isTr ? '+ Egzersiz' : '+ Exercise'}
                   </Text>
-                  <Text style={styles.proj3KgTotal}>~{projected14} kg</Text>
+                  <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
                   <View style={styles.proj3BarWrap}>
                     <View style={[styles.proj3BarFat, { flex: 98 }]} />
                     <View style={[styles.proj3BarMuscle, { flex: 2, backgroundColor: '#6366F1' }]} />
@@ -839,8 +1278,8 @@ export default function DashboardScreen({ navigation }) {
                     <Text style={styles.projTipIcon}>🥩</Text>
                     <Text style={styles.projTipText}>
                       {isTr
-                        ? `Günlük protein hedefine ulaşırsan kas kaybı oranı %${musclePct}'ten yaklaşık %5'e düşebilir.`
-                        : `Hitting your daily protein target could bring muscle loss rate from ~${musclePct}% down to ~5%.`}
+                        ? `Günlük protein hedefine ulaşmak kas korumayı destekler.`
+                        : `Hitting your daily protein target supports muscle maintenance.`}
                     </Text>
                   </View>
                 )}
@@ -849,8 +1288,8 @@ export default function DashboardScreen({ navigation }) {
                   <Text style={styles.projTipIcon}>💪</Text>
                   <Text style={styles.projTipText}>
                     {isTr
-                      ? `Haftada 2–3 direnç egzersizi kas kaybı riskini ciddi ölçüde azaltabilir — metabolizmanız daha iyi korunabilir.`
-                      : `2–3 resistance sessions/week can significantly reduce muscle loss risk — your metabolism stays better protected.`}
+                      ? `Haftada 2–3 direnç egzersizi kas korumayı destekler ve metabolizmanızı güçlü tutar.`
+                      : `2–3 resistance sessions/week supports muscle maintenance and keeps your metabolism strong.`}
                   </Text>
                 </View>
 
@@ -858,8 +1297,8 @@ export default function DashboardScreen({ navigation }) {
                   <Text style={styles.projTipIcon}>🏆</Text>
                   <Text style={styles.projTipText}>
                     {isTr
-                      ? `Protein + egzersiz kombinasyonu en güçlü senaryo — kas kaybı riski minimum seviyeye inebilir ve metabolizma hızı korunabilir.`
-                      : `Protein + exercise is the strongest combination — muscle loss risk may drop to minimal and your metabolism stays protected.`}
+                      ? `Protein + egzersiz kombinasyonu kas koruma ve metabolizma için en güçlü senaryodur.`
+                      : `Protein + exercise is the strongest combination for muscle maintenance and metabolism.`}
                   </Text>
                 </View>
 
@@ -880,34 +1319,27 @@ export default function DashboardScreen({ navigation }) {
           title={isTr ? '🧠 Kas Sağlığı' : '🧠 Muscle Health'}
         />
         <View style={styles.scoreCard}>
-          <View style={styles.scoreCardHeader}>
-            <Text style={styles.scoreCardEmoji}>{muscleScoreInfo.emoji}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.scoreCardLabel, { color: muscleScoreInfo.color }]}>
-                {muscleScoreInfo.label}
+          <View style={styles.scoreRingHeader}>
+            <Ring
+              progress={Math.min(muscleScore, 100) / 100}
+              size={88}
+              strokeWidth={10}
+              color={muscleScoreInfo.color}
+            >
+              <Text style={[styles.scoreRingValue, { color: muscleScoreInfo.color }]}>
+                {muscleScore}
               </Text>
+              <Text style={styles.scoreRingMax}>/100</Text>
+            </Ring>
+            <View style={styles.scoreRingTextCol}>
+              <View style={styles.scoreRingTitleRow}>
+                <Text style={styles.scoreCardEmoji}>{muscleScoreInfo.emoji}</Text>
+                <Text style={[styles.scoreCardLabel, { color: muscleScoreInfo.color }]}>
+                  {muscleScoreInfo.label}
+                </Text>
+              </View>
               <Text style={styles.scoreCardDesc}>{muscleScoreInfo.desc}</Text>
             </View>
-            <Text style={[styles.scoreValue, { color: muscleScoreInfo.color }]}>
-              {muscleScore}
-            </Text>
-          </View>
-
-          {/* Horizontal progress bar */}
-          <View style={styles.progressBarBg}>
-            <View
-              style={[
-                styles.progressBarFill,
-                {
-                  width: `${Math.min(muscleScore, 100)}%`,
-                  backgroundColor: muscleScoreInfo.color,
-                },
-              ]}
-            />
-          </View>
-          <View style={styles.progressBarLabels}>
-            <Text style={styles.progressBarMin}>0</Text>
-            <Text style={styles.progressBarMax}>100</Text>
           </View>
 
           {/* Factor breakdown */}
@@ -945,8 +1377,8 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
 
-        {/* ── Rebound Risk ── */}
-        <SectionTitle title={isTr ? '⚡ Geri Alım Riski' : '⚡ Rebound Risk'} />
+        {/* ── Sustainability Score ── */}
+        <SectionTitle title={isTr ? '⚡ Sürdürülebilirlik Skoru' : '⚡ Sustainability Score'} />
         <View style={[styles.riskCard, { backgroundColor: reboundInfo.bg }]}>
           <View style={styles.riskCardRow}>
             <Text style={styles.riskCardEmoji}>{reboundInfo.emoji}</Text>
@@ -977,8 +1409,8 @@ export default function DashboardScreen({ navigation }) {
           <View style={styles.proteinWhyCard}>
             <Text style={styles.proteinWhyText}>
               {isTr
-                ? `Neden ${proteinTarget}g? → ${profile.weight} kg × 1,6 g/kg = kas koruması için bilimsel minimum. Direnç egzersizi yapılan günlerde 2,0 g/kg'a çıkmak kas kaybını daha da azaltabilir.`
-                : `Why ${proteinTarget}g? → ${profile.weight} kg × 1.6 g/kg = scientific minimum for muscle preservation. On resistance training days, 2.0 g/kg may further reduce muscle loss.`}
+                ? `Neden ${proteinTarget}g? → ${profile.weight} kg × 1,6 g/kg = kas koruma için optimal protein. Direnç egzersizi yapılan günlerde 2,0 g/kg hedeflerinizi daha da destekler.`
+                : `Why ${proteinTarget}g? → ${profile.weight} kg × 1.6 g/kg = optimal protein for muscle maintenance. On resistance training days, 2.0 g/kg further supports your goals.`}
             </Text>
             <View style={styles.proteinThresholds}>
               <View style={[styles.proteinThresholdPill, { backgroundColor: '#FEE2E2' }]}>
@@ -1025,21 +1457,7 @@ export default function DashboardScreen({ navigation }) {
             <Text style={[styles.proteinActionTitle, {
               color: proteinProgressPct < 0.6 ? '#DC2626' : proteinProgressPct < 0.8 ? '#D97706' : '#3730A3',
             }]}>
-              {isTr
-                ? `${remainingProtein}g kalmış. ${
-                    remainingProtein <= 30
-                      ? '1 yumurta (7g) + yoğurt (10g) + peynir (8g).'
-                      : remainingProtein <= 60
-                      ? '150g tavuk göğsü (35g) + Yunan yoğurdu (20g).'
-                      : '200g ton balığı (40g) + 2 yumurta (14g) + yoğurt (20g).'
-                  }`
-                : `${remainingProtein}g left. ${
-                    remainingProtein <= 30
-                      ? '1 egg (7g) + yogurt (10g) + cheese (8g).'
-                      : remainingProtein <= 60
-                      ? '150g chicken breast (35g) + Greek yogurt (20g).'
-                      : '200g tuna (40g) + 2 eggs (14g) + yogurt (20g).'
-                  }`}
+              {getRotatingSuggestion(remainingProtein, language)}
             </Text>
             <View style={styles.progressBarBg}>
               <View style={[
@@ -1056,8 +1474,8 @@ export default function DashboardScreen({ navigation }) {
           </View>
         )}
 
-        {/* ── After GLP-1 Tips ── */}
-        <SectionTitle title={isTr ? '🔄 GLP-1 Sonrası Yaşam' : '🔄 Life After GLP-1'} />
+        {/* ── Sustaining Your Progress Tips ── */}
+        <SectionTitle title={isTr ? '🔄 İlerlemenizi Sürdürün' : '🔄 Sustaining Your Progress'} />
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -1092,7 +1510,7 @@ export default function DashboardScreen({ navigation }) {
               <View style={styles.chatHeaderLeft}>
                 <View style={styles.chatAvatar}><Text style={styles.chatAvatarEmoji}>🤖</Text></View>
                 <View>
-                  <Text style={styles.chatName}>{isTr ? 'GLP-1 Koçun' : 'Your GLP-1 Coach'}</Text>
+                  <Text style={styles.chatName}>{isTr ? 'GLP-1 Coach Rehberin' : 'Your Wellness Guide'}</Text>
                   <Text style={styles.chatStatus}>
                     {isTr
                       ? `Bugün ${analyzedTodayProtein}g protein`
@@ -1181,10 +1599,10 @@ export default function DashboardScreen({ navigation }) {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>{t('logWeight')}</Text>
+              <Text style={styles.modalTitle}>{weightLabel(isTr)}</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder={t('weightPlaceholder')}
+                placeholder={weightPlaceholder()}
                 placeholderTextColor="#9CA3AF"
                 keyboardType="decimal-pad"
                 value={weightInput}
@@ -1201,17 +1619,12 @@ export default function DashboardScreen({ navigation }) {
                 >
                   <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.saveBtn, savingWeight && { opacity: 0.7 }]}
+                <PrimaryButton
+                  style={styles.saveBtn}
+                  title={t('save')}
+                  loading={savingWeight}
                   onPress={handleSaveWeight}
-                  disabled={savingWeight}
-                >
-                  {savingWeight ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <Text style={styles.saveBtnText}>{t('save')}</Text>
-                  )}
-                </TouchableOpacity>
+                />
               </View>
             </View>
           </View>
@@ -1234,21 +1647,77 @@ function SectionTitle({ title }) {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F9FAFB' },
+  safe: { flex: 1, backgroundColor: colors.background },
   scroll: { flex: 1 },
-  content: { padding: 24, paddingTop: 16 },
+  content: { padding: spacing.containerMargin, paddingTop: spacing.gutter },
+
+  medDisclaimer: {
+    backgroundColor: colors.warningBg, borderRadius: radii.md, padding: 10,
+    marginBottom: 14, borderWidth: 1, borderColor: '#FDE68A',
+  },
+  medDisclaimerText: { fontSize: 11, fontFamily: fontFamily.body, color: '#92400E', lineHeight: 16, textAlign: 'center' },
+
+  // ── Medication summary Card ──
+  medCard: { marginBottom: 12 },
+  medRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  medIconCircle: {
+    width: 44, height: 44, borderRadius: radii.md,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  medIconEmoji: { fontSize: 22 },
+  medTitle: { ...typography.labelMd, fontSize: 15, color: colors.onSurface },
+  medSub: { ...typography.bodyMd, fontSize: 13, color: colors.onSurfaceVariant, marginTop: 2 },
+  medChevron: { fontSize: 26, color: colors.outline, marginLeft: 4, marginTop: -2 },
+
+  // ── Rebound alert Card (P0 medication-free journey) ──
+  reboundCard: { marginBottom: 12, borderWidth: 1.5 },
+  reboundRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  reboundEmoji: { fontSize: 22, marginTop: 1 },
+  reboundTitle: { fontSize: 14, fontFamily: fontFamily.headingBold, fontWeight: '800', marginBottom: 4 },
+  reboundDesc: { fontSize: 13, fontFamily: fontFamily.body, color: '#374151', lineHeight: 18 },
+  reboundBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    backgroundColor: colors.primary,
+    borderRadius: radii.md,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  reboundBtnText: { color: colors.onPrimary, fontSize: 13, fontFamily: fontFamily.bodySemiBold, fontWeight: '600' },
+
+  // ── Apple Watch / HealthKit Card ──
+  watchCard: { marginBottom: 12 },
+  watchHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  watchEmoji: { fontSize: 20 },
+  watchTitle: { fontSize: 15, fontFamily: fontFamily.bodyBold, fontWeight: '700', color: colors.onSurface },
+  watchStatsRow: { flexDirection: 'row', alignItems: 'center' },
+  watchStat: { flex: 1, alignItems: 'center' },
+  watchStatDivider: { width: 1, alignSelf: 'stretch', backgroundColor: colors.outlineVariant, marginVertical: 4 },
+  watchStatEmoji: { fontSize: 20, marginBottom: 4 },
+  watchStatValue: { fontSize: 24, fontFamily: fontFamily.headingExtraBold, fontWeight: '800', color: colors.onSurface },
+  watchStatUnit: { fontSize: 13, fontFamily: fontFamily.bodyMedium, fontWeight: '500', color: colors.onSurfaceVariant },
+  watchStatLabel: { fontSize: 12, fontFamily: fontFamily.bodyMedium, color: colors.onSurfaceVariant, marginTop: 2 },
+  watchRestingLine: {
+    fontSize: 12,
+    fontFamily: fontFamily.body,
+    color: colors.onSurfaceVariant,
+    marginTop: 12,
+    textAlign: 'center',
+  },
+
+  // ── Honest estimate caption ──
+  estimateCaption: {
+    fontSize: 11,
+    fontFamily: fontFamily.body,
+    color: colors.outline,
+    lineHeight: 15,
+    marginBottom: 10,
+    fontStyle: 'italic',
+  },
 
   // ── Hero Card ──
   heroCard: {
-    backgroundColor: '#4F46E5',
-    borderRadius: 20,
-    padding: 20,
     marginBottom: 12,
-    shadowColor: '#4F46E5',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 6,
   },
   heroTop: {
     flexDirection: 'row',
@@ -1257,17 +1726,20 @@ const styles = StyleSheet.create({
   },
   heroGreeting: {
     fontSize: 16,
+    fontFamily: fontFamily.bodySemiBold,
     fontWeight: '600',
     color: 'rgba(255,255,255,0.85)',
     marginBottom: 4,
   },
   heroWeight: {
     fontSize: 36,
+    fontFamily: fontFamily.headingExtraBold,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: colors.onPrimary,
   },
   heroWeightEmpty: {
     fontSize: 18,
+    fontFamily: fontFamily.headingSemiBold,
     fontWeight: '600',
     color: 'rgba(255,255,255,0.6)',
   },
@@ -1296,7 +1768,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.35)',
   },
   heroLogBtnText: {
-    color: '#FFFFFF',
+    color: colors.onPrimary,
+    fontFamily: fontFamily.bodyBold,
     fontWeight: '700',
     fontSize: 13,
   },
@@ -1312,9 +1785,9 @@ const styles = StyleSheet.create({
     top: 0, left: 0, right: 0, bottom: 0,
   },
   chatSheet: {
-    backgroundColor: '#F9FAFB',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
     overflow: 'hidden',
   },
   chatHandle: {
@@ -1323,7 +1796,7 @@ const styles = StyleSheet.create({
   },
   chatHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#4F46E5', padding: 14,
+    backgroundColor: colors.primary, padding: 14,
   },
   chatHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   chatAvatar: {
@@ -1331,43 +1804,43 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center',
   },
   chatAvatarEmoji: { fontSize: 20 },
-  chatName: { color: '#FFF', fontSize: 15, fontWeight: '700' },
-  chatStatus: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 1 },
+  chatName: { color: colors.onPrimary, fontSize: 15, fontFamily: fontFamily.bodyBold, fontWeight: '700' },
+  chatStatus: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontFamily: fontFamily.body, marginTop: 1 },
   chatClose: { padding: 8 },
-  chatCloseText: { color: '#FFF', fontSize: 18, fontWeight: '600' },
+  chatCloseText: { color: colors.onPrimary, fontSize: 18, fontFamily: fontFamily.bodySemiBold, fontWeight: '600' },
   chatMessages: { flex: 1 },
   bubble: { flexDirection: 'row', marginBottom: 12, alignItems: 'flex-end' },
   bubbleUser: { justifyContent: 'flex-end' },
   bubbleCoach: { justifyContent: 'flex-start' },
   bubbleEmoji: { fontSize: 18, marginRight: 6, marginBottom: 4 },
   bubbleText: { maxWidth: '78%', borderRadius: 16, padding: 12 },
-  bubbleTextUser: { backgroundColor: '#4F46E5', borderBottomRightRadius: 4 },
-  bubbleTextCoach: { backgroundColor: '#FFF', borderBottomLeftRadius: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2 },
-  bubbleMsg: { fontSize: 14, lineHeight: 20 },
-  bubbleMsgUser: { color: '#FFF' },
-  bubbleMsgCoach: { color: '#111827' },
-  quickPrompts: { flexShrink: 0, maxHeight: 70, backgroundColor: '#FFF', borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  bubbleTextUser: { backgroundColor: colors.primary, borderBottomRightRadius: 4 },
+  bubbleTextCoach: { backgroundColor: colors.surface, borderBottomLeftRadius: 4, ...shadow('sm') },
+  bubbleMsg: { fontSize: 14, fontFamily: fontFamily.body, lineHeight: 20 },
+  bubbleMsgUser: { color: colors.onPrimary },
+  bubbleMsgCoach: { color: colors.onSurface },
+  quickPrompts: { flexShrink: 0, maxHeight: 70, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   quickPrompt: {
-    backgroundColor: '#EEF2FF', borderRadius: 20,
+    backgroundColor: colors.infoBg, borderRadius: radii.pill,
     paddingHorizontal: 14, paddingVertical: 8, alignSelf: 'flex-start',
   },
-  quickPromptText: { color: '#4F46E5', fontSize: 13, fontWeight: '600' },
+  quickPromptText: { color: colors.primary, fontSize: 13, fontFamily: fontFamily.bodySemiBold, fontWeight: '600' },
   chatInputRow: {
     flexDirection: 'row', alignItems: 'flex-end', gap: 10,
-    padding: 12, backgroundColor: '#FFF',
+    padding: 12, backgroundColor: colors.surface,
     borderTopWidth: 1, borderTopColor: '#F3F4F6',
   },
   chatInput: {
-    flex: 1, borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 20,
-    paddingHorizontal: 16, paddingVertical: 10, fontSize: 14,
-    color: '#111827', maxHeight: 100, backgroundColor: '#F9FAFB',
+    flex: 1, borderWidth: 1.5, borderColor: colors.outlineVariant, borderRadius: 20,
+    paddingHorizontal: 16, paddingVertical: 10, fontSize: 14, fontFamily: fontFamily.body,
+    color: colors.onSurface, maxHeight: 100, backgroundColor: '#F9FAFB',
   },
   sendBtn: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: '#4F46E5',
+    width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary,
     alignItems: 'center', justifyContent: 'center',
   },
   sendBtnDisabled: { backgroundColor: '#C7D2FE' },
-  sendBtnText: { color: '#FFF', fontSize: 18 },
+  sendBtnText: { color: colors.onPrimary, fontSize: 18 },
   heroPill: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(16, 185, 129, 0.25)',
@@ -1380,37 +1853,18 @@ const styles = StyleSheet.create({
   heroPillText: {
     color: '#6EE7B7',
     fontSize: 13,
+    fontFamily: fontFamily.bodyBold,
     fontWeight: '700',
   },
 
   // ── Body Stats Row ──
-  statsRow: {
+  statCardsRow: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    gap: 12,
     marginBottom: 12,
-    paddingVertical: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
   },
-  statCard: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 2,
-  },
-  statDivider: {
-    width: 1,
-    backgroundColor: '#F3F4F6',
-    marginVertical: 4,
-  },
-  statEmoji: { fontSize: 18, marginBottom: 4 },
-  statValue: { fontSize: 22, fontWeight: '800', color: '#111827' },
-  statUnit: { fontSize: 11, color: '#9CA3AF', fontWeight: '600', marginTop: 1 },
-  statLabel: { fontSize: 11, color: '#6B7280', fontWeight: '600', marginTop: 2 },
-  statBmiTag: { fontSize: 11, fontWeight: '700', marginTop: 2 },
+  statCardItem: { flex: 1 },
+  statEmoji: { fontSize: 18 },
 
   // ── Step Counter Card ──
   stepCard: {
@@ -1425,14 +1879,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   stepEmoji: { fontSize: 24, marginTop: 1 },
-  stepCount: { fontSize: 20, fontWeight: '800' },
-  stepGoal: { fontSize: 13, fontWeight: '500', color: '#6B7280' },
-  stepMsg: { fontSize: 12, color: '#374151', marginTop: 3, lineHeight: 17 },
-  stepBarBg: {
-    height: 8, borderRadius: 4,
-    backgroundColor: 'rgba(0,0,0,0.08)', overflow: 'hidden',
-  },
-  stepBarFill: { height: '100%', borderRadius: 4 },
+  stepCount: { fontSize: 20, fontWeight: '800', fontFamily: fontFamily.headingBold },
+  stepGoal: { fontSize: 13, fontWeight: '500', color: '#6B7280', fontFamily: fontFamily.bodyMedium },
+  stepMsg: { fontSize: 12, color: '#374151', marginTop: 3, lineHeight: 17, fontFamily: fontFamily.body },
 
   // ── Streak Banner ──
   streakBanner: {
@@ -1443,53 +1892,22 @@ const styles = StyleSheet.create({
   },
   streakText: {
     fontSize: 13,
+    fontFamily: fontFamily.bodyBold,
     fontWeight: '700',
   },
 
   // ── Section Title ──
   sectionTitleRow: {
-    marginTop: 20,
+    marginTop: spacing.stackLg,
     marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 18,
+    fontFamily: fontFamily.headingBold,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.onSurface,
+    letterSpacing: -0.25,
   },
-
-  // ── Locked coach message card ──
-  lockedCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 3,
-    overflow: 'hidden',
-  },
-  lockedContent: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
-  lockedEmoji: { fontSize: 28 },
-  lockedTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  lockedSub: { fontSize: 13, color: '#9CA3AF', marginTop: 2 },
-  lockedOverlay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 10,
-    padding: 10,
-  },
-  lockedOverlayIcon: { fontSize: 18 },
-  upgradeBtn: {
-    backgroundColor: '#4F46E5',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  upgradeBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
 
   // ── Muscle Alert Banner ──
   muscleAlertBanner: {
@@ -1502,15 +1920,15 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   muscleAlertEmoji: { fontSize: 22 },
-  muscleAlertTitle: { fontSize: 14, fontWeight: '800', marginBottom: 2 },
-  muscleAlertDesc: { fontSize: 12, color: '#374151', lineHeight: 17 },
+  muscleAlertTitle: { fontSize: 14, fontWeight: '800', marginBottom: 2, fontFamily: fontFamily.headingBold },
+  muscleAlertDesc: { fontSize: 12, color: '#374151', lineHeight: 17, fontFamily: fontFamily.body },
   muscleAlertBtn: {
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     alignItems: 'center',
   },
-  muscleAlertBtnText: { color: '#FFF', fontWeight: '700', fontSize: 12 },
+  muscleAlertBtnText: { color: colors.white, fontWeight: '700', fontSize: 12, fontFamily: fontFamily.bodySemiBold },
 
   // ── Fat vs Muscle Loss ──
   fatMuscleRow: {
@@ -1520,20 +1938,16 @@ const styles = StyleSheet.create({
   },
   fatMuscleCard: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: radii.card,
     padding: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    ...shadow('sm'),
   },
   fatMuscleIcon: { fontSize: 20, marginBottom: 4 },
-  fatMuscleValue: { fontSize: 26, fontWeight: '800' },
-  fatMuscleLabel: { fontSize: 12, fontWeight: '600', marginTop: 2 },
-  fatMusclePct: { fontSize: 11, fontWeight: '700', marginTop: 2, opacity: 0.8 },
+  fatMuscleValue: { fontSize: 26, fontFamily: fontFamily.headingExtraBold, fontWeight: '800' },
+  fatMuscleLabel: { fontSize: 12, fontFamily: fontFamily.bodySemiBold, fontWeight: '600', marginTop: 2 },
+  fatMusclePct: { fontSize: 11, fontFamily: fontFamily.bodyBold, fontWeight: '700', marginTop: 2, opacity: 0.8 },
   splitBarRow: {
     flexDirection: 'row',
     height: 10,
@@ -1547,21 +1961,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
   },
-  splitBarLegendText: { fontSize: 12, fontWeight: '600', color: '#374151' },
+  splitBarLegendText: { fontSize: 12, fontWeight: '600', color: '#374151', fontFamily: fontFamily.bodySemiBold },
 
   // ── 14-Day Projection ──
   projectionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
     padding: 16,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 3,
+    ...shadow('md'),
   },
-  projectionRateLabel: { fontSize: 11, color: '#9CA3AF', marginBottom: 12, textAlign: 'center' },
+  projectionRateLabel: { fontSize: 11, fontFamily: fontFamily.body, color: colors.outline, marginBottom: 12, textAlign: 'center' },
 
   // 3-path table
   proj3Row: {
@@ -1578,6 +1988,7 @@ const styles = StyleSheet.create({
   proj3ColBadge: {
     fontSize: 10,
     fontWeight: '800',
+    fontFamily: fontFamily.bodySemiBold,
     color: '#92400E',
     backgroundColor: '#FDE68A',
     borderRadius: 20,
@@ -1588,8 +1999,9 @@ const styles = StyleSheet.create({
   },
   proj3KgTotal: {
     fontSize: 18,
+    fontFamily: fontFamily.headingExtraBold,
     fontWeight: '800',
-    color: '#111827',
+    color: colors.onSurface,
     marginBottom: 6,
   },
   proj3BarWrap: {
@@ -1600,11 +2012,11 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 8,
   },
-  proj3BarFat: { backgroundColor: '#10B981' },
+  proj3BarFat: { backgroundColor: colors.success },
   proj3BarMuscle: {},
-  proj3Fat: { fontSize: 11, fontWeight: '600', color: '#059669', textAlign: 'center' },
-  proj3Muscle: { fontSize: 11, fontWeight: '700', textAlign: 'center', marginTop: 2 },
-  proj3RiskRange: { fontSize: 10, fontWeight: '500', textAlign: 'center', marginTop: 1 },
+  proj3Fat: { fontSize: 11, fontWeight: '600', color: '#059669', textAlign: 'center', fontFamily: fontFamily.bodySemiBold },
+  proj3Muscle: { fontSize: 11, fontWeight: '700', textAlign: 'center', marginTop: 2, fontFamily: fontFamily.bodySemiBold },
+  proj3RiskRange: { fontSize: 10, fontWeight: '500', textAlign: 'center', marginTop: 1, fontFamily: fontFamily.bodyMedium },
 
   // Action tips
   projDisclaimer: {
@@ -1614,6 +2026,7 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     textAlign: 'center',
     fontStyle: 'italic',
+    fontFamily: fontFamily.body,
   },
   projTipsWrap: { gap: 8 },
   projTip: {
@@ -1625,21 +2038,21 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   projTipIcon: { fontSize: 16, marginTop: 1 },
-  projTipText: { flex: 1, fontSize: 13, color: '#374151', fontWeight: '500', lineHeight: 18 },
+  projTipText: { flex: 1, fontSize: 13, color: '#374151', fontWeight: '500', lineHeight: 18, fontFamily: fontFamily.bodyMedium },
 
   // ── Protein Why Card ──
   proteinWhyCard: {
-    backgroundColor: '#F8FAFF',
-    borderRadius: 12,
+    backgroundColor: colors.infoBg,
+    borderRadius: radii.md,
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#C7D2FE',
   },
-  proteinWhyText: { fontSize: 13, fontWeight: '600', color: '#3730A3', marginBottom: 8, lineHeight: 18 },
+  proteinWhyText: { fontSize: 13, fontFamily: fontFamily.bodySemiBold, fontWeight: '600', color: colors.primaryDark, marginBottom: 8, lineHeight: 18 },
   proteinThresholds: { flexDirection: 'row', gap: 6 },
   proteinThresholdPill: { flex: 1, borderRadius: 8, paddingVertical: 4, alignItems: 'center' },
-  proteinThresholdPillText: { fontSize: 10, fontWeight: '700', color: '#374151' },
+  proteinThresholdPillText: { fontSize: 10, fontWeight: '700', color: '#374151', fontFamily: fontFamily.bodySemiBold },
 
   // ── Risk Factors ──
   riskFactors: {
@@ -1648,47 +2061,46 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(0,0,0,0.08)',
   },
-  riskFactorsTitle: { fontSize: 12, fontWeight: '700', color: '#374151', marginBottom: 6 },
-  riskFactor: { fontSize: 12, color: '#6B7280', marginBottom: 3, lineHeight: 16 },
+  riskFactorsTitle: { fontSize: 12, fontWeight: '700', color: '#374151', marginBottom: 6, fontFamily: fontFamily.bodySemiBold },
+  riskFactor: { fontSize: 12, color: '#6B7280', marginBottom: 3, lineHeight: 16, fontFamily: fontFamily.body },
 
   // ── Empty state ──
   emptyCard: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
+    backgroundColor: colors.background,
+    borderRadius: radii.md,
     padding: 16,
     alignItems: 'center',
     marginBottom: 20,
   },
-  emptyCardText: { fontSize: 13, color: '#6B7280', textAlign: 'center', lineHeight: 20 },
+  emptyCardText: { fontSize: 13, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, textAlign: 'center', lineHeight: 20 },
 
-  // ── Muscle Score Card ──
+  // ── Protein Score Card ──
   scoreCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
     padding: 16,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 3,
+    ...shadow('md'),
   },
-  scoreCardHeader: {
+  scoreRingHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
+    alignItems: 'center',
+    gap: 16,
     marginBottom: 14,
   },
-  scoreCardEmoji: { fontSize: 22, marginTop: 1 },
-  scoreCardLabel: { fontSize: 15, fontWeight: '700' },
-  scoreCardDesc: { fontSize: 13, color: '#6B7280', marginTop: 3, lineHeight: 18 },
-  scoreValue: { fontSize: 26, fontWeight: '800' },
+  scoreRingTextCol: { flex: 1 },
+  scoreRingTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
+  scoreRingValue: { fontSize: 26, fontFamily: fontFamily.headingExtraBold, fontWeight: '800' },
+  scoreRingMax: { fontSize: 11, fontFamily: fontFamily.bodySemiBold, color: colors.outline, marginTop: -2 },
+  scoreCardEmoji: { fontSize: 20 },
+  scoreCardLabel: { fontSize: 15, fontFamily: fontFamily.bodyBold, fontWeight: '700', flexShrink: 1 },
+  scoreCardDesc: { fontSize: 13, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, marginTop: 3, lineHeight: 18 },
 
   // ── Shared progress bar ──
   progressBarBg: {
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: colors.outlineVariant,
     overflow: 'hidden',
     marginTop: 2,
   },
@@ -1696,13 +2108,6 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 5,
   },
-  progressBarLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  progressBarMin: { fontSize: 11, color: '#9CA3AF' },
-  progressBarMax: { fontSize: 11, color: '#9CA3AF' },
 
   scoreFactors: {
     flexDirection: 'row',
@@ -1714,57 +2119,46 @@ const styles = StyleSheet.create({
   },
   scoreFactor: { alignItems: 'center', flex: 1 },
   scoreFactorDot: { fontSize: 14, marginBottom: 2 },
-  scoreFactorText: { fontSize: 11, color: '#6B7280', textAlign: 'center', fontWeight: '500' },
+  scoreFactorText: { fontSize: 11, color: '#6B7280', textAlign: 'center', fontWeight: '500', fontFamily: fontFamily.bodyMedium },
 
   // ── Rebound Risk Card ──
   riskCard: {
-    borderRadius: 16,
+    borderRadius: radii.card,
     padding: 16,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    ...shadow('sm'),
   },
   riskCardRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   riskCardEmoji: { fontSize: 22, marginTop: 1 },
-  riskCardLabel: { fontSize: 15, fontWeight: '700' },
-  riskCardDesc: { fontSize: 13, color: '#374151', marginTop: 4, lineHeight: 18 },
+  riskCardLabel: { fontSize: 15, fontFamily: fontFamily.bodyBold, fontWeight: '700' },
+  riskCardDesc: { fontSize: 13, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, marginTop: 4, lineHeight: 18 },
 
   // ── Protein Action Card ──
   proteinActionCard: {
-    borderRadius: 16,
+    borderRadius: radii.card,
     padding: 16,
     marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    ...shadow('sm'),
   },
   proteinActionEmoji: { fontSize: 22, marginBottom: 6 },
-  proteinActionTitle: { fontSize: 14, fontWeight: '600', lineHeight: 20, marginBottom: 12 },
+  proteinActionTitle: { fontSize: 14, fontFamily: fontFamily.bodySemiBold, fontWeight: '600', lineHeight: 20, marginBottom: 12 },
   proteinProgressLabel: {
     fontSize: 12,
-    color: '#6B7280',
+    fontFamily: fontFamily.bodyMedium,
+    color: colors.onSurfaceVariant,
     marginTop: 6,
     fontWeight: '500',
   },
 
-  // ── After GLP-1 Tips ──
+  // ── Sustaining Your Progress Tips ──
   tipsScroll: { paddingRight: 24, paddingBottom: 4 },
   tipCard: {
     width: 200,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
     padding: 16,
     marginRight: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 3,
+    ...shadow('md'),
   },
   tipIconCircle: {
     width: 44,
@@ -1775,8 +2169,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   tipIcon: { fontSize: 22 },
-  tipTitle: { fontSize: 14, fontWeight: '700', color: '#111827', marginBottom: 6 },
-  tipText: { fontSize: 12, color: '#6B7280', lineHeight: 18 },
+  tipTitle: { fontSize: 14, fontFamily: fontFamily.bodyBold, fontWeight: '700', color: colors.onSurface, marginBottom: 6 },
+  tipText: { fontSize: 12, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, lineHeight: 18 },
 
   // ── Log Weight Modal ──
   modalOverlay: {
@@ -1785,38 +2179,34 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
     padding: 28,
     paddingBottom: 40,
   },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: '#111827', marginBottom: 16 },
+  modalTitle: { fontSize: 20, fontFamily: fontFamily.headingBold, fontWeight: '700', color: colors.onSurface, marginBottom: 16 },
   modalInput: {
     borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
+    borderColor: colors.outlineVariant,
+    borderRadius: radii.md,
     padding: 14,
     fontSize: 18,
-    color: '#111827',
-    backgroundColor: '#F9FAFB',
+    fontFamily: fontFamily.body,
+    color: colors.onSurface,
+    backgroundColor: colors.background,
   },
   modalButtons: { flexDirection: 'row', marginTop: 20, gap: 12 },
   cancelBtn: {
     flex: 1,
     borderWidth: 1.5,
-    borderColor: '#E5E7EB',
-    borderRadius: 12,
+    borderColor: colors.outlineVariant,
+    borderRadius: radii.md,
     padding: 14,
     alignItems: 'center',
   },
-  cancelBtnText: { color: '#374151', fontWeight: '600', fontSize: 16 },
+  cancelBtnText: { color: colors.onSurfaceVariant, fontFamily: fontFamily.bodySemiBold, fontWeight: '600', fontSize: 16 },
   saveBtn: {
     flex: 1,
-    backgroundColor: '#4F46E5',
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
   },
-  saveBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
 });

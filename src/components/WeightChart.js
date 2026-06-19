@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
+import { colors, fontFamily, shadow } from '../theme';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -10,11 +11,14 @@ const screenWidth = Dimensions.get('window').width;
  * Props:
  *  data  {Array<{ date: string, weight: number }>}  chronological order, oldest first
  */
-export default function WeightChart({ data = [], height = 180 }) {
+export default function WeightChart({ data = [], height = 180, weightUnit = 'kg', language = 'en' }) {
+  const isTr = language === 'tr';
   if (!data || data.length < 2) {
     return (
       <View style={[styles.card, styles.empty, { height }]}>
-        <Text style={styles.emptyText}>Not enough data to display chart</Text>
+        <Text style={styles.emptyText}>
+          {isTr ? 'Grafik için yeterli veri yok' : 'Not enough data to display chart'}
+        </Text>
       </View>
     );
   }
@@ -37,18 +41,18 @@ export default function WeightChart({ data = [], height = 180 }) {
     datasets: [
       {
         data: weights,
-        color: () => '#4F46E5',
+        color: () => colors.primary,
         strokeWidth: 2,
       },
     ],
   };
 
   const chartConfig = {
-    backgroundColor: '#FFFFFF',
-    backgroundGradientFrom: '#FFFFFF',
-    backgroundGradientTo: '#FFFFFF',
-    fillShadowGradientFrom: '#FFFFFF',
-    fillShadowGradientTo: '#FFFFFF',
+    backgroundColor: colors.surface,
+    backgroundGradientFrom: colors.surface,
+    backgroundGradientTo: colors.surface,
+    fillShadowGradientFrom: colors.surface,
+    fillShadowGradientTo: colors.surface,
     fillShadowGradientOpacity: 0,
     decimalPlaces: 1,
     color: (opacity = 1) => `rgba(79, 70, 229, ${opacity})`,
@@ -56,8 +60,8 @@ export default function WeightChart({ data = [], height = 180 }) {
     propsForDots: {
       r: '4',
       strokeWidth: '2',
-      stroke: '#4F46E5',
-      fill: '#FFFFFF',
+      stroke: colors.primary,
+      fill: colors.surface,
     },
     propsForBackgroundLines: {
       stroke: '#F3F4F6',
@@ -83,7 +87,7 @@ export default function WeightChart({ data = [], height = 180 }) {
         withOuterLines={false}
         withShadow={false}
         fromZero={false}
-        yAxisSuffix=" kg"
+        yAxisSuffix={` ${weightUnit}`}
         yAxisInterval={1}
       />
     </View>
@@ -92,14 +96,10 @@ export default function WeightChart({ data = [], height = 180 }) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 3,
+    ...shadow('sm'),
     overflow: 'hidden',
   },
   chart: {
@@ -112,7 +112,8 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   emptyText: {
-    color: '#9CA3AF',
+    color: colors.outline,
     fontSize: 14,
+    fontFamily: fontFamily.body,
   },
 });

@@ -1,6 +1,6 @@
 /**
  * heuristics.js
- * Pure scoring functions for GLP-1 muscle preservation analytics.
+ * Pure scoring functions for GLP-1 Coach fitness and nutrition analytics.
  */
 
 /**
@@ -30,7 +30,8 @@ export function calculateMuscleScore(
 }
 
 /**
- * Calculate the rebound / muscle-loss risk.
+ * Calculate the sustainability / muscle-loss risk score.
+ * (Exported as calculateReboundRisk for backward compatibility with existing callers.)
  *
  * @param {number} weeklyWeightLossPercent       – % of body weight lost this week
  * @param {number} proteinRatio                  – actual / target protein (0–1+)
@@ -96,29 +97,14 @@ export function calculateReboundRisk(
   return { score: clampedScore, level, factors };
 }
 
-/**
- * Estimate body composition of weight lost.
- *
- * When protein intake is adequate the body preferentially burns fat.
- * When protein is inadequate muscle is broken down at a higher rate.
- *
- * @param {number} proteinRatio – actual / target protein (0–1+)
- * @returns {{ fatPercent: number, musclePercent: number }}
- */
-export function calculateBodyComposition(proteinRatio) {
-  if (proteinRatio >= 0.8) {
-    return { fatPercent: 80, musclePercent: 20 };
-  }
-  return { fatPercent: 60, musclePercent: 40 };
-}
 
 /**
- * Generate a short, action-specific coach message with exact gram amounts.
+ * Generate a short, action-specific wellness guide message with exact gram amounts.
  *
  * @param {'en'|'tr'} language
  * @param {number}    weeklyChange            – kg lost (positive = lost weight)
  * @param {number}    proteinRatio            – actual / target (0–1+)
- * @param {'Low'|'Medium'|'High'} riskLevel
+ * @param {'Low'|'Medium'|'High'} riskLevel  – sustainability score level
  * @param {{ proteinTarget?: number, analyzedTodayProtein?: number }} opts
  * @returns {string}
  */
@@ -149,7 +135,7 @@ export function generateCoachMessage(language, weeklyChange, proteinRatio, riskL
     if (goodProtein && riskLevel === 'Low') {
       return lostWeight
         ? `Great work! You've lost ${weeklyChange.toFixed(1)} kg while protecting muscle — protein at ${Math.round(proteinRatio * 100)}% of ${proteinTarget}g means your body is burning fat efficiently. Keep this up.`
-        : `Protein is strong (${Math.round(proteinRatio * 100)}% of ${proteinTarget}g) and muscle risk is low. Adding 2–3 resistance sessions this week could push your muscle score even higher.`;
+        : `Protein is strong (${Math.round(proteinRatio * 100)}% of ${proteinTarget}g) and muscle risk is low. Adding 2–3 resistance sessions this week could push your protein score even higher.`;
     }
     if (goodProtein && riskLevel === 'Medium') {
       return lostWeight
@@ -166,8 +152,8 @@ export function generateCoachMessage(language, weeklyChange, proteinRatio, riskL
     if (!goodProtein && riskLevel === 'Medium') {
       const food = foodSuggestion(remaining, false);
       return lostWeight
-        ? `You lost ${weeklyChange.toFixed(1)} kg this week but today's protein is only ${analyzedTodayProtein}g / ${proteinTarget}g. ${food} Consistent low protein increases muscle loss risk.`
-        : `Protein needs attention — ${analyzedTodayProtein}g of ${proteinTarget}g today. ${food} Also: 2–3 resistance sessions this week can reduce muscle loss risk even at current protein levels.`;
+        ? `You lost ${weeklyChange.toFixed(1)} kg this week but today's protein is only ${analyzedTodayProtein}g / ${proteinTarget}g. ${food} Consistent low protein increases muscle maintenance.`
+        : `Protein needs attention — ${analyzedTodayProtein}g of ${proteinTarget}g today. ${food} Also: 2–3 resistance sessions this week can reduce muscle maintenance even at current protein levels.`;
     }
     const food = foodSuggestion(remaining, false);
     return `⚠️ Muscle preservation needs action now. Protein: ${analyzedTodayProtein}g / ${proteinTarget}g — ${food} Every gram matters. Add resistance exercise this week to further reduce breakdown risk.`;
@@ -177,7 +163,7 @@ export function generateCoachMessage(language, weeklyChange, proteinRatio, riskL
   if (goodProtein && riskLevel === 'Low') {
     return lostWeight
       ? `Harika! ${weeklyChange.toFixed(1)} kg verdiniz ve kaslarınızı korudunuz. %${Math.round(proteinRatio * 100)} protein oranıyla vücudunuz yağ yakıyor — bu ritmi koruyun.`
-      : `Protein güçlü (%${Math.round(proteinRatio * 100)} / ${proteinTarget}g) ve kas riski düşük. Haftada 2–3 direnç egzersizi ekleyerek kas skorunuzu daha da yükseltebilirsiniz.`;
+      : `Protein güçlü (%${Math.round(proteinRatio * 100)} / ${proteinTarget}g) ve kas riski düşük. Haftada 2–3 direnç egzersizi ekleyerek protein skorunuzu daha da yükseltebilirsiniz.`;
   }
   if (goodProtein && riskLevel === 'Medium') {
     return lostWeight
@@ -199,4 +185,69 @@ export function generateCoachMessage(language, weeklyChange, proteinRatio, riskL
   }
   const food = foodSuggestion(remaining, true);
   return `⚠️ Kas koruması için hemen aksiyon gerekiyor. Protein: ${analyzedTodayProtein}g / ${proteinTarget}g. ${food} Her gram önemli. Bu hafta direnç egzersizi ekleyerek yıkım riskini azaltabilirsiniz.`;
+}
+
+/**
+ * Detect weight rebound for maintenance / stopped GLP-1 users.
+ *
+ * Looks at the weight trajectory and flags sustained INCREASE from the recent
+ * minimum (the low point the user reached). Useful for users who have stopped
+ * or are tapering off the medication, where regaining weight is the key risk.
+ *
+ * @param {Array<{date: string|number|Date, weight: number}>} weightHistory
+ *        Entries ordered oldest -> newest. `weight` is in kilograms.
+ * @returns {{ trend: 'up'|'down'|'flat', gainedKg: number, weeksTracked: number, alert: 'none'|'watch'|'high' }}
+ */
+export function detectRebound(weightHistory) {
+  // Defensive defaults — never throw, always return the documented shape.
+  if (!Array.isArray(weightHistory) || weightHistory.length === 0) {
+    return { trend: 'flat', gainedKg: 0, weeksTracked: 0, alert: 'none' };
+  }
+
+  // Keep only valid numeric weight entries, preserving oldest -> newest order.
+  const points = weightHistory.filter(
+    (p) => p && typeof p.weight === 'number' && isFinite(p.weight)
+  );
+
+  if (points.length === 0) {
+    return { trend: 'flat', gainedKg: 0, weeksTracked: 0, alert: 'none' };
+  }
+
+  // Weeks tracked, derived from the date span when dates are usable.
+  const firstTime = new Date(points[0].date).getTime();
+  const lastTime = new Date(points[points.length - 1].date).getTime();
+  let weeksTracked = 0;
+  if (isFinite(firstTime) && isFinite(lastTime) && lastTime >= firstTime) {
+    weeksTracked = Math.round(((lastTime - firstTime) / (7 * 24 * 60 * 60 * 1000)) * 10) / 10;
+  }
+
+  // Single data point: nothing to compare against.
+  if (points.length === 1) {
+    return { trend: 'flat', gainedKg: 0, weeksTracked, alert: 'none' };
+  }
+
+  const latest = points[points.length - 1].weight;
+
+  // Find the most recent minimum (the low point reached) and gain since then.
+  // We track the running minimum; rebound = current weight above that minimum.
+  let recentMin = points[0].weight;
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].weight < recentMin) recentMin = points[i].weight;
+  }
+
+  const gainedKg = Math.round((latest - recentMin) * 10) / 10;
+
+  // Determine overall trend by comparing the latest reading to the first one.
+  const netChange = latest - points[0].weight;
+  let trend;
+  if (netChange > 0.3) trend = 'up';
+  else if (netChange < -0.3) trend = 'down';
+  else trend = 'flat';
+
+  // Rebound alert is driven by sustained gain from the recent minimum.
+  let alert = 'none';
+  if (gainedKg >= 2.5) alert = 'high';
+  else if (gainedKg >= 1) alert = 'watch';
+
+  return { trend, gainedKg: Math.max(0, gainedKg), weeksTracked, alert };
 }

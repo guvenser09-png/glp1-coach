@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useLanguage } from '../context/LanguageContext';
+import { colors, fontFamily } from '../theme';
 
 /**
  * CoachMessage
@@ -35,10 +36,10 @@ export default function CoachMessage({ message = '' }) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#4F46E5',
+    backgroundColor: colors.primary,
     borderRadius: 16,
     padding: 16,
-    shadowColor: '#4F46E5',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 12,
@@ -69,14 +70,15 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#FFFFFF',
+    fontFamily: fontFamily.headingBold,
+    color: colors.white,
     flex: 1,
   },
   activeDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#10B981',
+    backgroundColor: colors.success,
   },
   divider: {
     height: 1,
@@ -85,6 +87,7 @@ const styles = StyleSheet.create({
   },
   message: {
     fontSize: 14,
+    fontFamily: fontFamily.body,
     color: 'rgba(255,255,255,0.92)',
     lineHeight: 22,
     fontWeight: '400',

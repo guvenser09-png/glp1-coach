@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -6,13 +7,19 @@ import {
   ScrollView,
   TouchableOpacity,
   Modal,
+  TextInput,
+  Linking,
+  ActivityIndicator,
+  Alert,
   SafeAreaView as RNSafeAreaView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { useSubscription } from '../context/SubscriptionContext';
 import { getUserProfile } from '../services/firestoreService';
+import { OPENAI_API_KEY } from '../config';
+import { colors, fontFamily, radii, shadow, spacing, typography } from '../theme';
+import { Chip } from '../components/ui';
 
 // ── Meal database (no pork) ──────────────────────────────────────────────────
 
@@ -189,6 +196,131 @@ const BREAKFASTS = [
         'Her dilime bolca krem peynir sürün.',
         'Üzerine füme somon dilimleri koyun.',
         'Kapari ve taze dereotu ile süsleyin; limon sıkın.',
+      ],
+    },
+  },
+  {
+    en: 'Beef & Egg Scramble',
+    tr: 'Dana & Yumurta Kavurması',
+    protein: 38,
+    calories: 430,
+    prepTime: '10 dk / 10 min',
+    ingredients: {
+      en: ['120g lean ground beef', '3 eggs', '1 tbsp olive oil', '1/2 red bell pepper', 'salt, cumin'],
+      tr: ['120g yağsız kıyma dana', '3 yumurta', '1 yemek kaşığı zeytinyağı', '1/2 kırmızı biber', 'tuz, kimyon'],
+    },
+    steps: {
+      en: [
+        'Brown ground beef with cumin and salt in olive oil 4-5 min.',
+        'Add diced bell pepper and cook 2 min.',
+        'Whisk eggs and pour over; scramble until just set.',
+        'Serve immediately — great with whole grain toast.',
+      ],
+      tr: [
+        'Kıymayı kimyon ve tuzla zeytinyağında 4-5 dk pişirin.',
+        'Küp doğranmış biberi ekleyin, 2 dk pişirin.',
+        'Yumurtaları çırpın ve üzerine dökün; karıştırarak pişirin.',
+        'Hemen servis edin — tam buğday ekmeğiyle harika gider.',
+      ],
+    },
+  },
+  {
+    en: 'Chia Pudding with Protein',
+    tr: 'Proteinli Chia Pudingi',
+    protein: 26,
+    calories: 340,
+    prepTime: '5 dk + gece / 5 min + overnight',
+    ingredients: {
+      en: ['3 tbsp chia seeds', '200ml almond milk', '1 scoop protein powder', '1 tbsp almond butter', 'fresh berries'],
+      tr: ['3 yemek kaşığı chia tohumu', '200ml badem sütü', '1 ölçek protein tozu', '1 yemek kaşığı badem ezmesi', 'taze meyve'],
+    },
+    steps: {
+      en: [
+        'Mix chia seeds, almond milk, and protein powder in a jar.',
+        'Stir well to prevent clumping; refrigerate overnight.',
+        'In the morning, stir again and top with almond butter.',
+        'Add fresh berries and serve cold.',
+      ],
+      tr: [
+        'Chia tohumu, badem sütü ve protein tozunu bir kavanoze karıştırın.',
+        'Topaklanmayı önlemek için iyice karıştırın; gecelik buzdolabına koyun.',
+        'Sabah tekrar karıştırın ve üstüne badem ezmesi ekleyin.',
+        'Taze meyvelerle soğuk servis edin.',
+      ],
+    },
+  },
+  {
+    en: 'Tuna Stuffed Avocado',
+    tr: 'Ton Balıklı Avokado',
+    protein: 30,
+    calories: 370,
+    prepTime: '5 dk / 5 min',
+    ingredients: {
+      en: ['1 ripe avocado', '1 can tuna in water (120g drained)', '1 tbsp Greek yogurt', 'lemon juice', 'chives, pepper'],
+      tr: ['1 olgun avokado', '1 kutu ton balığı (120g süzülmüş)', '1 yemek kaşığı Yunan yoğurdu', 'limon suyu', 'frenk soğanı, karabiber'],
+    },
+    steps: {
+      en: [
+        'Halve and pit the avocado.',
+        'Mix drained tuna with Greek yogurt, lemon juice, and pepper.',
+        'Spoon tuna mixture into avocado halves.',
+        'Garnish with chives and a squeeze of lemon.',
+      ],
+      tr: [
+        'Avokadoyu ikiye bölün ve çekirdeğini çıkarın.',
+        'Süzülmüş ton balığını Yunan yoğurdu, limon suyu ve karabiberle karıştırın.',
+        'Ton balığı karışımını avokado yarılarına koyun.',
+        'Frenk soğanı ve limon ile servis edin.',
+      ],
+    },
+  },
+  {
+    en: 'Ricotta & Berry Toast',
+    tr: 'Ricotta & Meyveli Tost',
+    protein: 22,
+    calories: 310,
+    prepTime: '5 dk / 5 min',
+    ingredients: {
+      en: ['2 slices whole grain bread', '100g ricotta cheese', '1/2 cup mixed berries', '1 tsp honey', 'pinch of cinnamon'],
+      tr: ['2 dilim tam buğday ekmeği', '100g ricotta peyniri', '1/2 bardak karışık meyve', '1 tsp bal', 'bir tutam tarçın'],
+    },
+    steps: {
+      en: [
+        'Toast the bread until golden.',
+        'Spread ricotta generously on each slice.',
+        'Top with mixed berries and drizzle with honey.',
+        'Sprinkle cinnamon and serve immediately.',
+      ],
+      tr: [
+        'Ekmeği altın rengine kadar kızartın.',
+        'Her dilime bolca ricotta sürün.',
+        'Üzerine karışık meyve koyun ve bal gezdirin.',
+        'Tarçın serpin ve hemen servis edin.',
+      ],
+    },
+  },
+  {
+    en: 'High-Protein Oatmeal',
+    tr: 'Yüksek Proteinli Yulaf Lapası',
+    protein: 28,
+    calories: 380,
+    prepTime: '8 dk / 8 min',
+    ingredients: {
+      en: ['1/2 cup rolled oats', '1 scoop protein powder', '1 tbsp peanut butter', '1 banana', '200ml milk'],
+      tr: ['1/2 bardak yulaf', '1 ölçek protein tozu', '1 yemek kaşığı fıstık ezmesi', '1 muz', '200ml süt'],
+    },
+    steps: {
+      en: [
+        'Cook oats in milk over medium heat 4-5 min, stirring.',
+        'Remove from heat and stir in protein powder.',
+        'Slice banana and place on top with peanut butter.',
+        'Serve warm — add a drizzle of honey if desired.',
+      ],
+      tr: [
+        'Yulafı sütte orta ateşte karıştırarak 4-5 dk pişirin.',
+        'Ateşten alın ve protein tozunu karıştırın.',
+        'Muzu dilimleyin, fıstık ezmesiyle üstüne koyun.',
+        'Sıcak servis edin — istersen biraz bal ekleyin.',
       ],
     },
   },
@@ -370,6 +502,131 @@ const LUNCHES = [
       ],
     },
   },
+  {
+    en: 'Chicken & Lentil Soup',
+    tr: 'Tavuklu Mercimek Çorbası',
+    protein: 36,
+    calories: 410,
+    prepTime: '20 dk / 20 min',
+    ingredients: {
+      en: ['120g cooked chicken breast, shredded', '1/2 cup green lentils', '1 carrot', '1 celery stalk', 'vegetable broth, turmeric'],
+      tr: ['120g pişmiş tavuk göğsü, didilmiş', '1/2 bardak yeşil mercimek', '1 havuç', '1 kereviz sapı', 'sebze suyu, zerdeçal'],
+    },
+    steps: {
+      en: [
+        'Dice carrot and celery; sauté in olive oil 3 min.',
+        'Add rinsed lentils, broth, and turmeric; bring to a boil.',
+        'Simmer 15 min until lentils are soft.',
+        'Stir in shredded chicken, season, and serve hot.',
+      ],
+      tr: [
+        'Havuç ve kerevizi küp doğrayın; zeytinyağında 3 dk soteleyin.',
+        'Yıkanmış mercimek, sebze suyu ve zerdeçalı ekleyin; kaynatın.',
+        'Mercimek yumuşayana kadar 15 dk kısık ateşte pişirin.',
+        'Didilmiş tavuğu ekleyin, baharatlayın ve sıcak servis edin.',
+      ],
+    },
+  },
+  {
+    en: 'Beef Taco Bowl',
+    tr: 'Dana Taco Kasesi',
+    protein: 40,
+    calories: 450,
+    prepTime: '15 dk / 15 min',
+    ingredients: {
+      en: ['150g lean ground beef', '1/2 cup black beans', '1/2 cup brown rice (cooked)', 'salsa, lime', 'cumin, paprika'],
+      tr: ['150g yağsız kıyma dana', '1/2 bardak siyah fasulye', '1/2 bardak esmer pirinç (pişmiş)', 'salsa, misket limonu', 'kimyon, paprika'],
+    },
+    steps: {
+      en: [
+        'Brown ground beef with cumin and paprika 5-6 min.',
+        'Add black beans; warm through 2 min.',
+        'Assemble bowl: rice base, beef and beans, salsa on top.',
+        'Squeeze lime juice and serve.',
+      ],
+      tr: [
+        'Kıymayı kimyon ve paprikayla 5-6 dk pişirin.',
+        'Siyah fasulyeleri ekleyin; 2 dk ısıtın.',
+        'Kaseyi hazırlayın: pirinç tabanı, dana ve fasulye, üstüne salsa.',
+        'Misket limonu sıkın ve servis edin.',
+      ],
+    },
+  },
+  {
+    en: 'Sardine & Avocado Bowl',
+    tr: 'Sardalya & Avokado Kasesi',
+    protein: 32,
+    calories: 390,
+    prepTime: '5 dk / 5 min',
+    ingredients: {
+      en: ['1 can sardines in olive oil (120g)', '1/2 avocado', '1/2 cup cherry tomatoes', 'cucumber, lemon', 'whole grain crackers'],
+      tr: ['1 kutu zeytinyağlı sardalya (120g)', '1/2 avokado', '1/2 bardak cherry domates', 'salatalık, limon', 'tam buğday kraker'],
+    },
+    steps: {
+      en: [
+        'Drain sardines and place in a bowl.',
+        'Slice avocado, halve tomatoes, and dice cucumber.',
+        'Arrange everything in a bowl; squeeze lemon juice over.',
+        'Serve with whole grain crackers on the side.',
+      ],
+      tr: [
+        'Sardalyaları süzün ve kaseye koyun.',
+        'Avokadoyu dilimleyin, domatesleri ikiye bölün, salatalığı küp kesin.',
+        'Her şeyi kasede düzenleyin; üzerine limon sıkın.',
+        'Tam buğday krakerlerle servis edin.',
+      ],
+    },
+  },
+  {
+    en: 'Tofu & Vegetable Bowl',
+    tr: 'Tofu & Sebze Kasesi',
+    protein: 28,
+    calories: 370,
+    prepTime: '15 dk / 15 min',
+    ingredients: {
+      en: ['200g firm tofu, cubed', '1 cup edamame', '1/2 cup quinoa (cooked)', '2 tbsp soy sauce', 'sesame seeds, ginger'],
+      tr: ['200g sert tofu, küp kesilmiş', '1 bardak edamame', '1/2 bardak kinoa (pişmiş)', '2 yemek kaşığı soya sosu', 'susam, zencefil'],
+    },
+    steps: {
+      en: [
+        'Press tofu dry; pan-fry in sesame oil until golden, 8 min.',
+        'Add soy sauce and ginger; toss to coat.',
+        'Assemble bowl: quinoa base, tofu, edamame.',
+        'Sprinkle sesame seeds and serve.',
+      ],
+      tr: [
+        'Tofuyu kurulayın; susam yağında 8 dk altın rengi olana kadar pişirin.',
+        'Soya sosu ve zencefil ekleyin; kaplayacak şekilde karıştırın.',
+        'Kaseyi hazırlayın: kinoa tabanı, tofu, edamame.',
+        'Susam serpin ve servis edin.',
+      ],
+    },
+  },
+  {
+    en: 'Chicken Caesar Wrap',
+    tr: 'Tavuk Caesar Dürümü',
+    protein: 38,
+    calories: 440,
+    prepTime: '10 dk / 10 min',
+    ingredients: {
+      en: ['130g grilled chicken breast', '1 whole wheat tortilla', '2 tbsp light Caesar dressing', '2 leaves romaine', '15g parmesan'],
+      tr: ['130g ızgara tavuk göğsü', '1 tam buğday tortilla', '2 yemek kaşığı light Caesar sos', '2 yaprak marul', '15g parmesan'],
+    },
+    steps: {
+      en: [
+        'Slice grilled chicken into strips.',
+        'Spread Caesar dressing on tortilla.',
+        'Layer romaine, chicken strips, and parmesan.',
+        'Roll tightly, slice diagonally, and serve.',
+      ],
+      tr: [
+        'Izgara tavuğu şeritler halinde dilimleyin.',
+        'Tortillaya Caesar sos sürün.',
+        'Marul, tavuk şeritleri ve parmesanı üstüne koyun.',
+        'Sıkıca sarın, çapraz kesin ve servis edin.',
+      ],
+    },
+  },
 ];
 
 const DINNERS = [
@@ -545,6 +802,131 @@ const DINNERS = [
         'Sebzeleri zeytinyağı, paprika ve tuzla karıştırın; 25 dk fırınlayın.',
         'Kıyma danaları tavada tarçın, tuz ve karabiberle pişirin.',
         'Kaseyi fırınlanmış sebzeler, dana ve üstüne elma ile hazırlayın.',
+      ],
+    },
+  },
+  {
+    en: 'Lemon Herb Chicken Thighs',
+    tr: 'Limonlu Otlu Tavuk Budu',
+    protein: 44,
+    calories: 480,
+    prepTime: '10 dk / 30 min',
+    ingredients: {
+      en: ['250g chicken thighs (skinless)', 'juice of 1 lemon', '3 garlic cloves', 'fresh rosemary, thyme', '2 tbsp olive oil'],
+      tr: ['250g tavuk budu (derisiz)', '1 limon suyu', '3 diş sarımsak', 'taze biberiye, kekik', '2 yemek kaşığı zeytinyağı'],
+    },
+    steps: {
+      en: [
+        'Mix lemon juice, garlic, rosemary, thyme, and olive oil.',
+        'Marinate chicken 10 min in the mixture.',
+        'Bake at 200°C for 25-28 min until golden and cooked through.',
+        'Serve with steamed vegetables or a side salad.',
+      ],
+      tr: [
+        'Limon suyu, sarımsak, biberiye, kekik ve zeytinyağını karıştırın.',
+        'Tavuğu 10 dk bu karışımda marine edin.',
+        '200°C\'de 25-28 dk altın renginde pişirin.',
+        'Buharda sebzeler veya yan salata ile servis edin.',
+      ],
+    },
+  },
+  {
+    en: 'Salmon Poke Bowl',
+    tr: 'Somon Poke Kasesi',
+    protein: 42,
+    calories: 490,
+    prepTime: '10 dk / 10 min',
+    ingredients: {
+      en: ['180g fresh salmon, cubed', '1/2 cup brown rice (cooked)', '1/2 avocado', '1/4 cucumber', '2 tbsp soy sauce, sesame oil'],
+      tr: ['180g taze somon, küp kesilmiş', '1/2 bardak esmer pirinç (pişmiş)', '1/2 avokado', '1/4 salatalık', '2 yemek kaşığı soya sosu, susam yağı'],
+    },
+    steps: {
+      en: [
+        'Marinate salmon cubes in soy sauce and sesame oil 5 min.',
+        'Slice avocado and cucumber.',
+        'Assemble bowl: rice base, salmon, avocado, cucumber.',
+        'Drizzle extra sauce on top and sprinkle sesame seeds.',
+      ],
+      tr: [
+        'Somon küplerini soya sosu ve susam yağında 5 dk marine edin.',
+        'Avokado ve salatalığı dilimleyin.',
+        'Kaseyi hazırlayın: pirinç tabanı, somon, avokado, salatalık.',
+        'Üstüne sos gezdirin ve susam serpin.',
+      ],
+    },
+  },
+  {
+    en: 'White Bean & Vegetable Soup',
+    tr: 'Beyaz Fasulye & Sebze Çorbası',
+    protein: 36,
+    calories: 420,
+    prepTime: '10 dk / 25 min',
+    ingredients: {
+      en: ['200g canned white beans', '100g chicken breast, diced', '1 zucchini', '2 tomatoes', 'garlic, Italian herbs'],
+      tr: ['200g konserve beyaz fasulye', '100g tavuk göğsü, küp kesilmiş', '1 kabak', '2 domates', 'sarımsak, İtalyan otları'],
+    },
+    steps: {
+      en: [
+        'Sauté garlic and diced chicken in olive oil 4 min.',
+        'Add diced zucchini, tomatoes, and herbs; cook 3 min.',
+        'Add white beans and 400ml water; simmer 15 min.',
+        'Season and serve hot with whole grain bread.',
+      ],
+      tr: [
+        'Sarımsak ve tavuk küplerini zeytinyağında 4 dk soteleyin.',
+        'Küp kabak, domates ve otları ekleyin; 3 dk pişirin.',
+        'Beyaz fasulye ve 400ml su ekleyin; 15 dk pişirin.',
+        'Baharatlayın ve tam buğday ekmeğiyle sıcak servis edin.',
+      ],
+    },
+  },
+  {
+    en: 'Teriyaki Chicken & Rice',
+    tr: 'Teriyaki Tavuk & Pirinç',
+    protein: 46,
+    calories: 510,
+    prepTime: '10 dk / 20 min',
+    ingredients: {
+      en: ['200g chicken breast', '3/4 cup white rice (cooked)', '3 tbsp teriyaki sauce', '1 cup broccoli', 'sesame seeds'],
+      tr: ['200g tavuk göğsü', '3/4 bardak beyaz pirinç (pişmiş)', '3 yemek kaşığı teriyaki sosu', '1 bardak brokoli', 'susam'],
+    },
+    steps: {
+      en: [
+        'Slice chicken into strips; cook in a pan 5-6 min per side.',
+        'Add teriyaki sauce; simmer 2 min until glazed.',
+        'Steam broccoli 4 min until tender-crisp.',
+        'Serve chicken and broccoli over rice; sprinkle sesame seeds.',
+      ],
+      tr: [
+        'Tavuğu şeritler halinde kesin; tavada her yüzü 5-6 dk pişirin.',
+        'Teriyaki sosu ekleyin; 2 dk sosa bulayarak pişirin.',
+        'Brokoliyi 4 dk buharda pişirin.',
+        'Tavuk ve brokoliyi pirinç üzerinde servis edin; susam serpin.',
+      ],
+    },
+  },
+  {
+    en: 'Egg & Spinach Frittata',
+    tr: 'Yumurta & Ispanak Frittata',
+    protein: 38,
+    calories: 400,
+    prepTime: '5 dk / 20 min',
+    ingredients: {
+      en: ['5 whole eggs', '100g baby spinach', '50g feta cheese', '1 small onion', '1 tbsp olive oil'],
+      tr: ['5 bütün yumurta', '100g bebek ıspanak', '50g beyaz peynir', '1 küçük soğan', '1 yemek kaşığı zeytinyağı'],
+    },
+    steps: {
+      en: [
+        'Preheat oven to 180°C. Sauté onion in oven-safe pan 3 min.',
+        'Add spinach; wilt 1-2 min.',
+        'Pour in whisked eggs; crumble feta on top.',
+        'Bake 12-15 min until set. Slice and serve.',
+      ],
+      tr: [
+        'Fırını 180°C\'ye ısıtın. Soğanı fırına girebilir tavada 3 dk soteleyin.',
+        'Ispanağı ekleyin; 1-2 dk soldur.',
+        'Çırpılmış yumurtaları dökün; üstüne beyaz peynir ufalayın.',
+        '12-15 dk pişirin. Dilimleyin ve servis edin.',
       ],
     },
   },
@@ -726,6 +1108,131 @@ const SNACKS = [
       ],
     },
   },
+  {
+    en: 'Smoked Turkey Roll-Ups',
+    tr: 'Füme Hindi Rulo',
+    protein: 18,
+    calories: 140,
+    prepTime: '3 dk / 3 min',
+    ingredients: {
+      en: ['6 slices smoked turkey breast', '3 tbsp cream cheese', '6 cucumber spears'],
+      tr: ['6 dilim füme hindi göğsü', '3 yemek kaşığı krem peynir', '6 salatalık çubuğu'],
+    },
+    steps: {
+      en: [
+        'Lay turkey slices flat on a board.',
+        'Spread a thin layer of cream cheese on each.',
+        'Place a cucumber spear at one end and roll up tightly.',
+        'Serve immediately or refrigerate up to 2 hours.',
+      ],
+      tr: [
+        'Hindi dilimlerini düz yüzeye koyun.',
+        'Her birine ince bir tabaka krem peynir sürün.',
+        'Bir ucuna salatalık çubuğu koyun ve sıkıca sarın.',
+        'Hemen servis edin veya 2 saate kadar buzdolabında saklayın.',
+      ],
+    },
+  },
+  {
+    en: 'Peanut Butter & Banana',
+    tr: 'Fıstık Ezmesi & Muz',
+    protein: 12,
+    calories: 200,
+    prepTime: '2 dk / 2 min',
+    ingredients: {
+      en: ['1 medium banana', '2 tbsp natural peanut butter', 'pinch of cinnamon'],
+      tr: ['1 orta boy muz', '2 yemek kaşığı doğal fıstık ezmesi', 'bir tutam tarçın'],
+    },
+    steps: {
+      en: [
+        'Peel and slice banana into rounds.',
+        'Serve with peanut butter for dipping.',
+        'Sprinkle cinnamon on top.',
+        'Great pre- or post-workout snack.',
+      ],
+      tr: [
+        'Muzu soyun ve dilimleyin.',
+        'Fıstık ezmesiyle birlikte servis edin.',
+        'Üstüne tarçın serpin.',
+        'Antrenman öncesi veya sonrası için mükemmel atıştırmalık.',
+      ],
+    },
+  },
+  {
+    en: 'Roasted Chickpeas',
+    tr: 'Kavrulmuş Nohut',
+    protein: 15,
+    calories: 180,
+    prepTime: '5 dk / 25 min',
+    ingredients: {
+      en: ['200g canned chickpeas, drained', '1 tbsp olive oil', '1 tsp paprika', '1/2 tsp cumin', 'salt'],
+      tr: ['200g konserve nohut, süzülmüş', '1 yemek kaşığı zeytinyağı', '1 tsp paprika', '1/2 tsp kimyon', 'tuz'],
+    },
+    steps: {
+      en: [
+        'Preheat oven to 200°C. Dry chickpeas thoroughly with a towel.',
+        'Toss with olive oil, paprika, cumin, and salt.',
+        'Spread on a baking tray; roast 20-25 min until crispy.',
+        'Cool 5 min before eating — they crisp up more as they cool.',
+      ],
+      tr: [
+        'Fırını 200°C\'ye ısıtın. Nohutu havluyla iyice kurulayın.',
+        'Zeytinyağı, paprika, kimyon ve tuzla karıştırın.',
+        'Fırın tepsisine yayın; 20-25 dk çıtır çıtır olana kadar pişirin.',
+        'Yemeden önce 5 dk soğutun — soğudukça daha çıtır olur.',
+      ],
+    },
+  },
+  {
+    en: 'Whey Protein Shake',
+    tr: 'Whey Protein Shake',
+    protein: 25,
+    calories: 190,
+    prepTime: '2 dk / 2 min',
+    ingredients: {
+      en: ['1 scoop whey protein powder', '200ml cold milk or almond milk', '1 tbsp cocoa powder (optional)', 'ice cubes'],
+      tr: ['1 ölçek whey protein tozu', '200ml soğuk süt veya badem sütü', '1 yemek kaşığı kakao tozu (isteğe bağlı)', 'buz küpleri'],
+    },
+    steps: {
+      en: [
+        'Add protein powder, milk, and cocoa to a blender.',
+        'Add a few ice cubes.',
+        'Blend 20-30 seconds until smooth.',
+        'Drink immediately post-workout for best results.',
+      ],
+      tr: [
+        'Protein tozu, süt ve kakaoyu blendere ekleyin.',
+        'Birkaç buz küpü ekleyin.',
+        'Pürüzsüz olana kadar 20-30 saniye blendırın.',
+        'En iyi sonuç için antrenman sonrası hemen için.',
+      ],
+    },
+  },
+  {
+    en: 'Mixed Nuts & Dark Chocolate',
+    tr: 'Karışık Kuruyemiş & Bitter Çikolata',
+    protein: 10,
+    calories: 210,
+    prepTime: '1 dk / 1 min',
+    ingredients: {
+      en: ['25g mixed nuts (almonds, walnuts, cashews)', '15g dark chocolate (70%+)', 'optional: dried cranberries'],
+      tr: ['25g karışık kuruyemiş (badem, ceviz, kaju)', '15g bitter çikolata (70%+)', 'isteğe bağlı: kurutulmuş kızılcık'],
+    },
+    steps: {
+      en: [
+        'Portion out nuts into a small bowl.',
+        'Break dark chocolate into small pieces and add.',
+        'Mix with dried cranberries if desired.',
+        'A perfect balance of protein, healthy fats, and antioxidants.',
+      ],
+      tr: [
+        'Kuruyemişleri küçük bir kaseye koyun.',
+        'Bitter çikolatayı küçük parçalara kırın ve ekleyin.',
+        'İsterseniz kurutulmuş kızılcık da ekleyin.',
+        'Protein, sağlıklı yağ ve antioksidan dengesi mükemmel.',
+      ],
+    },
+  },
 ];
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -740,19 +1247,21 @@ function getMealForDay(mealArray, dayIndex) {
 export default function DietPlansScreen({ navigation }) {
   const { user } = useAuth();
   const { t, language } = useLanguage();
-  const { checkAccess } = useSubscription();
   const isTr = language === 'tr';
 
   const [activeDay, setActiveDay] = useState(0);
   const [proteinTarget, setProteinTarget] = useState(120);
   const [selectedMeal, setSelectedMeal] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [ingredientInput, setIngredientInput] = useState('');
+  const [filterMode, setFilterMode] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiMeals, setAiMeals] = useState(null);
+  const [planVariant, setPlanVariant] = useState(0);
+
 
   useEffect(() => {
-    if (!checkAccess('diet_plans')) {
-      navigation.navigate('Paywall', { featureKey: 'diet_plans', featureName: t('dietPlans') });
-      return;
-    }
+    // Everything is unlocked — load the user's protein target for all users.
     if (user) {
       getUserProfile(user.uid)
         .then((profile) => {
@@ -766,11 +1275,72 @@ export default function DietPlansScreen({ navigation }) {
     }
   }, [user]);
 
+  const userIngredients = ingredientInput
+    .toLowerCase()
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  function mealMatchesIngredients(meal) {
+    if (!filterMode || userIngredients.length === 0) return true;
+    const allIngredients = [
+      ...meal.ingredients.en.map((i) => i.toLowerCase()),
+      ...meal.ingredients.tr.map((i) => i.toLowerCase()),
+    ].join(' ');
+    return userIngredients.some((ing) => allIngredients.includes(ing));
+  }
+
+  function getBestMealForDay(mealArray, dayIndex) {
+    if (!filterMode || userIngredients.length === 0) {
+      return getMealForDay(mealArray, dayIndex);
+    }
+    const matching = mealArray.filter(mealMatchesIngredients);
+    if (matching.length === 0) return getMealForDay(mealArray, dayIndex);
+    return matching[dayIndex % matching.length];
+  }
+
+  async function generateAIRecipes() {
+    if (!ingredientInput.trim()) return;
+    setAiLoading(true);
+    setAiMeals(null);
+    try {
+      const prompt = isTr
+        ? `Elimdeki malzemeler: ${ingredientInput}.\n\nBu malzemeleri kullanarak kas kütlesini korumaya çalışan, protein takibi yapan biri için yüksek proteinli 4 tarif öner (1 kahvaltı, 1 öğle, 1 akşam, 1 atıştırmalık). Her tarif için şu JSON yapısını kullan. Cevabı SADECE JSON olarak ver, başka açıklama yapma:\n{"meals": [{"type":"breakfast","name":"...","protein":0,"calories":0,"prepTime":"10 dk","ingredients":["..."],"steps":["..."]},{"type":"lunch",...},{"type":"dinner",...},{"type":"snack",...}]}`
+        : `My available ingredients: ${ingredientInput}.\n\nSuggest 4 high-protein recipes (1 breakfast, 1 lunch, 1 dinner, 1 snack) for someone focused on muscle preservation and protein tracking. Use ONLY this JSON format, no extra text:\n{"meals": [{"type":"breakfast","name":"...","protein":0,"calories":0,"prepTime":"10 min","ingredients":["..."],"steps":["..."]},{"type":"lunch",...},{"type":"dinner",...},{"type":"snack",...}]}`;
+
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: prompt }],
+          response_format: { type: 'json_object' },
+          max_tokens: 1200,
+        }),
+      });
+      const data = await res.json();
+      const raw = data.choices?.[0]?.message?.content;
+      if (!raw) throw new Error('No response');
+      const parsed = JSON.parse(raw);
+      const meals = parsed.meals || parsed;
+      if (!Array.isArray(meals) || meals.length === 0) throw new Error('Invalid format');
+      setAiMeals(meals);
+    } catch (e) {
+      Alert.alert(
+        isTr ? 'AI Hatası' : 'AI Error',
+        isTr ? 'Tarif oluşturulamadı. Tekrar deneyin.' : 'Could not generate recipes. Please try again.'
+      );
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  // 5 plan variants per day: shift by planVariant offset
   const dayMeals = {
-    breakfast: getMealForDay(BREAKFASTS, activeDay),
-    lunch: getMealForDay(LUNCHES, activeDay),
-    dinner: getMealForDay(DINNERS, activeDay),
-    snack: getMealForDay(SNACKS, activeDay),
+    breakfast: getBestMealForDay(BREAKFASTS, activeDay + planVariant),
+    lunch: getBestMealForDay(LUNCHES, activeDay + planVariant),
+    dinner: getBestMealForDay(DINNERS, activeDay + planVariant),
+    snack: getBestMealForDay(SNACKS, activeDay + planVariant),
   };
 
   const dailyProtein =
@@ -787,7 +1357,7 @@ export default function DietPlansScreen({ navigation }) {
 
   const dayLabels = isTr ? DAYS_TR : DAYS;
 
-  function openMealModal(mealKey, meal) {
+  function openMealModal(mealKey, meal, isAI = false) {
     const labels = {
       breakfast: { en: 'Breakfast', tr: 'Kahvaltı' },
       lunch: { en: 'Lunch', tr: 'Öğle' },
@@ -795,25 +1365,42 @@ export default function DietPlansScreen({ navigation }) {
       snack: { en: 'Snack', tr: 'Atıştırma' },
     };
     const emojis = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍎' };
-    setSelectedMeal({ ...meal, mealType: labels[mealKey], emoji: emojis[mealKey] });
+    if (isAI) {
+      setSelectedMeal({
+        en: meal.name, tr: meal.name,
+        mealType: labels[mealKey], emoji: emojis[mealKey],
+        protein: meal.protein, calories: meal.calories,
+        prepTime: meal.prepTime || '—',
+        ingredients: { en: meal.ingredients || [], tr: meal.ingredients || [] },
+        steps: { en: meal.steps || [], tr: meal.steps || [] },
+        isAI: true,
+      });
+    } else {
+      setSelectedMeal({ ...meal, mealType: labels[mealKey], emoji: emojis[mealKey] });
+    }
     setModalVisible(true);
   }
 
-  function renderMealCard(mealKey, meal) {
+  function renderMealCard(mealKey, meal, isAI = false) {
     const labels = { breakfast: t('breakfast'), lunch: t('lunch'), dinner: t('dinner'), snack: t('snack') };
     const emojis = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍎' };
+    const mealName = isAI ? meal.name : (isTr ? meal.tr : meal.en);
+    const mealIngredients = isAI
+      ? (meal.ingredients || []).join(', ')
+      : (isTr ? meal.ingredients.tr : meal.ingredients.en).join(', ');
+
     return (
       <TouchableOpacity
         key={mealKey}
         style={styles.mealCard}
-        onPress={() => openMealModal(mealKey, meal)}
+        onPress={() => openMealModal(mealKey, meal, isAI)}
         activeOpacity={0.85}
       >
         <View style={styles.mealHeader}>
           <Text style={styles.mealEmoji}>{emojis[mealKey]}</Text>
           <View style={{ flex: 1 }}>
-            <Text style={styles.mealType}>{labels[mealKey]}</Text>
-            <Text style={styles.mealName}>{isTr ? meal.tr : meal.en}</Text>
+            <Text style={styles.mealType}>{labels[mealKey]}{isAI ? '  🤖' : ''}</Text>
+            <Text style={styles.mealName}>{mealName}</Text>
           </View>
           <View style={styles.mealMacros}>
             <Text style={styles.mealProtein}>{meal.protein}g</Text>
@@ -826,11 +1413,9 @@ export default function DietPlansScreen({ navigation }) {
             <Text style={styles.mealStatLabel}>{t('calories')}</Text>
           </View>
           <View style={styles.mealStatDivider} />
-          <Text style={styles.mealIngredients}>
-            {(isTr ? meal.ingredients.tr : meal.ingredients.en).join(', ')}
-          </Text>
+          <Text style={styles.mealIngredients} numberOfLines={2}>{mealIngredients}</Text>
         </View>
-        <View style={styles.tapHint}>
+        <View style={styles.tapHintRow}>
           <Text style={styles.tapHintText}>
             {isTr ? 'Tarif için dokun →' : 'Tap for recipe →'}
           </Text>
@@ -849,21 +1434,85 @@ export default function DietPlansScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Day tabs */}
+      {/* Ingredient Filter + AI */}
+      <View style={styles.ingredientSection}>
+        <View style={styles.ingredientRow}>
+          <TextInput
+            style={styles.ingredientInput}
+            placeholder={isTr ? '🛒 Elindeki malzemeleri yaz (virgülle ayır)...' : '🛒 Type your ingredients (comma separated)...'}
+            placeholderTextColor={colors.outline}
+            value={ingredientInput}
+            onChangeText={(v) => { setIngredientInput(v); setAiMeals(null); }}
+            returnKeyType="done"
+          />
+          {ingredientInput.trim().length > 0 && (
+            <TouchableOpacity
+              style={styles.filterBtn}
+              onPress={() => { setFilterMode(false); setIngredientInput(''); setAiMeals(null); }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.filterBtnText}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        {ingredientInput.trim().length > 0 && (
+          <TouchableOpacity
+            style={[styles.aiSuggestBtn, aiLoading && { opacity: 0.6 }]}
+            onPress={generateAIRecipes}
+            disabled={aiLoading}
+            activeOpacity={0.85}
+          >
+            {aiLoading
+              ? <ActivityIndicator color={colors.white} size="small" />
+              : <Text style={styles.aiSuggestBtnText}>
+                  🤖 {isTr ? 'AI ile Kişisel Tarif Oluştur' : 'Generate AI Recipes for Me'}
+                </Text>
+            }
+          </TouchableOpacity>
+        )}
+        {aiMeals && (
+          <Text style={styles.filterInfo}>
+            {isTr ? '✅ AI tarafından oluşturulan kişisel tarifler gösteriliyor' : '✅ Showing AI-generated personalized recipes'}
+          </Text>
+        )}
+      </View>
+
+      {/* Day filter chips */}
       <View style={styles.dayTabsRow}>
         {dayLabels.map((day, index) => (
-          <TouchableOpacity
+          <Chip
             key={index}
-            style={[styles.dayTab, activeDay === index && styles.dayTabActive]}
+            label={day}
+            selected={activeDay === index}
             onPress={() => setActiveDay(index)}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.dayTabText, activeDay === index && styles.dayTabTextActive]}>
-              {day}
-            </Text>
-          </TouchableOpacity>
+            style={styles.dayChip}
+          />
         ))}
       </View>
+
+      {/* Plan variant selector */}
+      {!aiMeals && (
+        <View style={styles.planVariantRow}>
+          <Text style={styles.planVariantLabel}>
+            {isTr ? 'Plan:' : 'Plan:'}
+          </Text>
+          {[0, 1, 2, 3, 4].map((v) => (
+            <TouchableOpacity
+              key={v}
+              style={[styles.planVariantBtn, planVariant === v && styles.planVariantBtnActive]}
+              onPress={() => setPlanVariant(v)}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.planVariantBtnText, planVariant === v && styles.planVariantBtnTextActive]}>
+                {v + 1}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          <Text style={styles.planVariantHint}>
+            {isTr ? '(5 farklı öneri)' : '(5 options)'}
+          </Text>
+        </View>
+      )}
 
       <ScrollView
         contentContainerStyle={styles.content}
@@ -882,7 +1531,7 @@ export default function DietPlansScreen({ navigation }) {
           </View>
           <View style={styles.dailyTotalDivider} />
           <View style={styles.dailyTotalItem}>
-            <Text style={[styles.dailyTotalValue, { color: dailyProtein >= proteinTarget ? '#10B981' : '#F59E0B' }]}>
+            <Text style={[styles.dailyTotalValue, { color: dailyProtein >= proteinTarget ? colors.success : colors.warning }]}>
               {Math.round((dailyProtein / proteinTarget) * 100)}%
             </Text>
             <Text style={styles.dailyTotalLabel}>{isTr ? 'Hedef' : 'Goal'}</Text>
@@ -897,7 +1546,7 @@ export default function DietPlansScreen({ navigation }) {
                 styles.proteinBarFill,
                 {
                   width: `${Math.min((dailyProtein / proteinTarget) * 100, 100)}%`,
-                  backgroundColor: dailyProtein >= proteinTarget ? '#10B981' : '#4F46E5',
+                  backgroundColor: dailyProtein >= proteinTarget ? colors.success : colors.primary,
                 },
               ]}
             />
@@ -907,11 +1556,19 @@ export default function DietPlansScreen({ navigation }) {
           </Text>
         </View>
 
-        {/* Meal Cards */}
-        {renderMealCard('breakfast', dayMeals.breakfast)}
-        {renderMealCard('lunch', dayMeals.lunch)}
-        {renderMealCard('dinner', dayMeals.dinner)}
-        {renderMealCard('snack', dayMeals.snack)}
+        {/* Meal Cards — AI or static */}
+        {aiMeals
+          ? ['breakfast','lunch','dinner','snack'].map((type) => {
+              const aiMeal = aiMeals.find(m => m.type === type) || aiMeals[['breakfast','lunch','dinner','snack'].indexOf(type)];
+              return aiMeal ? renderMealCard(type, aiMeal, true) : renderMealCard(type, dayMeals[type]);
+            })
+          : <>
+              {renderMealCard('breakfast', dayMeals.breakfast)}
+              {renderMealCard('lunch', dayMeals.lunch)}
+              {renderMealCard('dinner', dayMeals.dinner)}
+              {renderMealCard('snack', dayMeals.snack)}
+            </>
+        }
 
         <View style={{ height: 32 }} />
       </ScrollView>
@@ -957,13 +1614,13 @@ export default function DietPlansScreen({ navigation }) {
                     <View style={styles.pill}>
                       <Text style={styles.pillText}>⏱ {selectedMeal.prepTime}</Text>
                     </View>
-                    <View style={[styles.pill, { backgroundColor: '#EEF2FF' }]}>
-                      <Text style={[styles.pillText, { color: '#4F46E5' }]}>
+                    <View style={[styles.pill, { backgroundColor: colors.infoBg }]}>
+                      <Text style={[styles.pillText, { color: colors.primary }]}>
                         💪 {selectedMeal.protein}g {isTr ? 'protein' : 'protein'}
                       </Text>
                     </View>
-                    <View style={[styles.pill, { backgroundColor: '#FFF7ED' }]}>
-                      <Text style={[styles.pillText, { color: '#D97706' }]}>
+                    <View style={[styles.pill, { backgroundColor: colors.warningBg }]}>
+                      <Text style={[styles.pillText, { color: colors.warning }]}>
                         🔥 {selectedMeal.calories} kcal
                       </Text>
                     </View>
@@ -999,6 +1656,28 @@ export default function DietPlansScreen({ navigation }) {
                     ))}
                   </View>
 
+                  {/* Citations */}
+                  <View style={styles.citationBox}>
+                    <Text style={styles.citationTitle}>
+                      {isTr ? '📚 Kaynaklar' : '📚 Sources'}
+                    </Text>
+                    <TouchableOpacity onPress={() => Linking.openURL('https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6566799/')}>
+                      <Text style={styles.citationLink}>
+                        • Stokes et al. (2018) — Protein for muscle preservation during weight loss. NCBI →
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => Linking.openURL('https://www.dietaryguidelines.gov')}>
+                      <Text style={styles.citationLink}>
+                        • USDA Dietary Guidelines for Americans →
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => Linking.openURL('https://www.who.int/news-room/fact-sheets/detail/healthy-diet')}>
+                      <Text style={styles.citationLink}>
+                        • WHO Healthy Diet Guidelines →
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
                   {/* Nutrition summary */}
                   <View style={styles.nutritionSummary}>
                     <Text style={styles.nutritionSummaryTitle}>
@@ -1006,14 +1685,14 @@ export default function DietPlansScreen({ navigation }) {
                     </Text>
                     <View style={styles.nutritionRow}>
                       <View style={styles.nutritionItem}>
-                        <Text style={[styles.nutritionValue, { color: '#4F46E5' }]}>
+                        <Text style={[styles.nutritionValue, { color: colors.primary }]}>
                           {selectedMeal.protein}g
                         </Text>
                         <Text style={styles.nutritionLabel}>{isTr ? 'Protein' : 'Protein'}</Text>
                       </View>
                       <View style={styles.nutritionDivider} />
                       <View style={styles.nutritionItem}>
-                        <Text style={[styles.nutritionValue, { color: '#F59E0B' }]}>
+                        <Text style={[styles.nutritionValue, { color: colors.warning }]}>
                           {selectedMeal.calories}
                         </Text>
                         <Text style={styles.nutritionLabel}>{isTr ? 'Kalori' : 'Calories'}</Text>
@@ -1031,101 +1710,152 @@ export default function DietPlansScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F9FAFB' },
+  safe: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 16,
+    paddingHorizontal: spacing.containerMargin,
+    paddingTop: spacing.gutter,
     paddingBottom: 12,
   },
-  heading: { fontSize: 24, fontWeight: '800', color: '#111827' },
+  heading: { ...typography.headlineMd, color: colors.onSurface },
   proteinTargetBadge: {
-    backgroundColor: '#EEF2FF',
-    borderRadius: 10,
+    backgroundColor: colors.infoBg,
+    borderRadius: radii.md,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  proteinTargetText: { fontSize: 13, fontWeight: '700', color: '#4F46E5' },
+  proteinTargetText: { fontSize: 13, fontFamily: fontFamily.bodyBold, fontWeight: '700', color: colors.primary },
+  ingredientSection: {
+    paddingHorizontal: spacing.containerMargin,
+    paddingBottom: spacing.stackSm,
+  },
+  ingredientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ingredientInput: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: colors.outlineVariant,
+    borderRadius: radii.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 13,
+    fontFamily: fontFamily.body,
+    color: colors.onSurface,
+    backgroundColor: colors.surface,
+  },
+  filterBtn: {
+    backgroundColor: colors.infoBg,
+    borderRadius: radii.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  filterBtnActive: { backgroundColor: colors.danger },
+  filterBtnText: { fontSize: 13, fontFamily: fontFamily.bodyBold, fontWeight: '700', color: colors.primary },
+  filterBtnTextActive: { color: colors.white },
+  filterInfo: {
+    fontSize: 12,
+    color: colors.success,
+    marginTop: 6,
+    fontFamily: fontFamily.bodyMedium,
+    fontWeight: '500',
+  },
   dayTabsRow: {
     flexDirection: 'row',
-    paddingHorizontal: 24,
+    flexWrap: 'wrap',
+    paddingHorizontal: spacing.containerMargin,
     paddingBottom: 12,
     gap: 6,
   },
-  dayTab: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-  },
-  dayTabActive: { backgroundColor: '#4F46E5' },
-  dayTabText: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
-  dayTabTextActive: { color: '#FFFFFF' },
-  content: { paddingHorizontal: 24 },
+  dayChip: { flexGrow: 1 },
+  content: { paddingHorizontal: spacing.containerMargin },
 
   dailyTotalBanner: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
+    padding: spacing.cardPadding,
     flexDirection: 'row',
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 3,
+    ...shadow('md'),
   },
   dailyTotalItem: { flex: 1, alignItems: 'center' },
-  dailyTotalValue: { fontSize: 22, fontWeight: '800', color: '#111827' },
-  dailyTotalLabel: { fontSize: 12, color: '#6B7280', marginTop: 2 },
-  dailyTotalDivider: { width: 1, backgroundColor: '#F3F4F6', marginHorizontal: 8 },
+  dailyTotalValue: { fontSize: 22, fontFamily: fontFamily.headingExtraBold, fontWeight: '800', color: colors.onSurface },
+  dailyTotalLabel: { fontSize: 12, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, marginTop: 2 },
+  dailyTotalDivider: { width: 1, backgroundColor: colors.outlineVariant, marginHorizontal: 8 },
 
   proteinBarContainer: { marginBottom: 16 },
   proteinBarTrack: {
     height: 8,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 4,
+    backgroundColor: colors.outlineVariant,
+    borderRadius: radii.sm,
     overflow: 'hidden',
     marginBottom: 6,
   },
-  proteinBarFill: { height: '100%', borderRadius: 4 },
-  proteinBarLabel: { fontSize: 12, color: '#6B7280', textAlign: 'right' },
+  proteinBarFill: { height: '100%', borderRadius: radii.sm },
+  proteinBarLabel: { fontSize: 12, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, textAlign: 'right' },
 
   mealCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radii.card,
+    padding: spacing.cardPadding,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 8,
-    elevation: 3,
+    ...shadow('md'),
   },
   mealHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
   mealEmoji: { fontSize: 26, marginRight: 12 },
   mealType: {
     fontSize: 12,
-    color: '#6B7280',
+    color: colors.onSurfaceVariant,
+    fontFamily: fontFamily.bodySemiBold,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
-  mealName: { fontSize: 16, fontWeight: '700', color: '#111827', marginTop: 2 },
-  mealMacros: { alignItems: 'flex-end' },
-  mealProtein: { fontSize: 20, fontWeight: '800', color: '#4F46E5' },
-  mealProteinLabel: { fontSize: 11, color: '#6B7280' },
+  mealName: { fontSize: 16, fontFamily: fontFamily.heading, fontWeight: '700', color: colors.onSurface, marginTop: 2 },
+  mealMacros: {
+    alignItems: 'center',
+    backgroundColor: colors.infoBg,
+    borderRadius: radii.md,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginLeft: 8,
+  },
+  mealProtein: { fontSize: 20, fontFamily: fontFamily.headingExtraBold, fontWeight: '800', color: colors.primary },
+  mealProteinLabel: { fontSize: 11, fontFamily: fontFamily.body, color: colors.primary },
   mealDetails: { flexDirection: 'row', alignItems: 'center' },
   mealStat: { alignItems: 'center', marginRight: 12 },
-  mealStatValue: { fontSize: 16, fontWeight: '700', color: '#374151' },
-  mealStatLabel: { fontSize: 11, color: '#9CA3AF' },
-  mealStatDivider: { width: 1, height: 32, backgroundColor: '#F3F4F6', marginRight: 12 },
-  mealIngredients: { fontSize: 13, color: '#6B7280', flex: 1, lineHeight: 18 },
-  tapHint: { marginTop: 10, alignItems: 'flex-end' },
-  tapHintText: { fontSize: 12, color: '#4F46E5', fontWeight: '600' },
+  mealStatValue: { fontSize: 16, fontFamily: fontFamily.heading, fontWeight: '700', color: colors.onSurface },
+  mealStatLabel: { fontSize: 11, fontFamily: fontFamily.body, color: colors.outline },
+  mealStatDivider: { width: 1, height: 32, backgroundColor: colors.outlineVariant, marginRight: 12 },
+  mealIngredients: { fontSize: 13, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, flex: 1, lineHeight: 18 },
+  tapHintRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  tapHintText: { fontSize: 12, color: colors.primary, fontFamily: fontFamily.bodySemiBold, fontWeight: '600' },
+  planVariantRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: spacing.containerMargin, paddingBottom: 10, gap: 6,
+  },
+  planVariantLabel: { fontSize: 13, fontFamily: fontFamily.bodyBold, fontWeight: '700', color: colors.onSurface, marginRight: 2 },
+  planVariantBtn: {
+    width: 32, height: 32, borderRadius: radii.pill,
+    backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: colors.outlineVariant,
+  },
+  planVariantBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  planVariantBtnText: { fontSize: 13, fontFamily: fontFamily.bodyBold, fontWeight: '700', color: colors.onSurfaceVariant },
+  planVariantBtnTextActive: { color: colors.white },
+  planVariantHint: { fontSize: 11, fontFamily: fontFamily.body, color: colors.outline, marginLeft: 4 },
+  aiSuggestBtn: {
+    backgroundColor: colors.primary, borderRadius: radii.md,
+    paddingVertical: 12, alignItems: 'center',
+    marginTop: 10,
+    flexDirection: 'row', justifyContent: 'center', gap: 8,
+    ...shadow('sm'),
+  },
+  aiSuggestBtnText: { color: colors.white, fontFamily: fontFamily.bodyBold, fontWeight: '700', fontSize: 14 },
 
   // ── Modal ──
   modalOverlay: {
@@ -1134,16 +1864,16 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
     maxHeight: '88%',
   },
   modalHeader: {
-    backgroundColor: '#4F46E5',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
+    backgroundColor: colors.primary,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    padding: spacing.cardPadding,
     flexDirection: 'row',
     alignItems: 'flex-start',
   },
@@ -1151,27 +1881,29 @@ const styles = StyleSheet.create({
   modalMealType: {
     fontSize: 12,
     color: 'rgba(255,255,255,0.7)',
+    fontFamily: fontFamily.bodySemiBold,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   modalMealName: {
     fontSize: 20,
+    fontFamily: fontFamily.headingExtraBold,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: colors.white,
     marginTop: 2,
   },
   modalCloseBtn: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: radii.pill,
     backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
   },
-  modalCloseBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
-  modalBody: { paddingHorizontal: 20, paddingTop: 16 },
+  modalCloseBtnText: { color: colors.white, fontFamily: fontFamily.bodyBold, fontWeight: '700', fontSize: 14 },
+  modalBody: { paddingHorizontal: spacing.cardPadding, paddingTop: 16 },
 
   pillRow: {
     flexDirection: 'row',
@@ -1180,17 +1912,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   pill: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 20,
+    backgroundColor: colors.surfaceVariant,
+    borderRadius: radii.pill,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  pillText: { fontSize: 13, fontWeight: '600', color: '#374151' },
+  pillText: { fontSize: 13, fontFamily: fontFamily.bodySemiBold, fontWeight: '600', color: colors.onSurfaceVariant },
 
   modalSectionTitle: {
     fontSize: 15,
+    fontFamily: fontFamily.heading,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.onSurface,
     marginBottom: 10,
   },
   ingredientsList: { marginBottom: 20 },
@@ -1203,12 +1936,12 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: '#4F46E5',
+    backgroundColor: colors.primary,
     marginTop: 6,
     marginRight: 10,
     flexShrink: 0,
   },
-  ingredientText: { fontSize: 14, color: '#374151', lineHeight: 20, flex: 1 },
+  ingredientText: { fontSize: 14, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, lineHeight: 20, flex: 1 },
 
   stepsList: { marginBottom: 20 },
   stepItem: {
@@ -1220,31 +1953,38 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: '#4F46E5',
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
     flexShrink: 0,
   },
-  stepNumberText: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
-  stepText: { fontSize: 14, color: '#374151', lineHeight: 20, flex: 1 },
+  stepNumberText: { color: colors.white, fontFamily: fontFamily.bodyBold, fontWeight: '700', fontSize: 13 },
+  stepText: { fontSize: 14, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, lineHeight: 20, flex: 1 },
 
+  citationBox: {
+    backgroundColor: colors.successBg, borderRadius: radii.md, padding: 14,
+    marginBottom: 16, borderWidth: 1, borderColor: '#BBF7D0',
+  },
+  citationTitle: { fontSize: 13, fontFamily: fontFamily.bodyBold, fontWeight: '700', color: '#065F46', marginBottom: 8 },
+  citationLink: { fontSize: 12, fontFamily: fontFamily.body, color: colors.success, marginBottom: 6, lineHeight: 18 },
   nutritionSummary: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: colors.surfaceVariant,
+    borderRadius: radii.card,
+    padding: spacing.gutter,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.outlineVariant,
   },
   nutritionSummaryTitle: {
     fontSize: 14,
+    fontFamily: fontFamily.heading,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.onSurface,
     marginBottom: 12,
   },
   nutritionRow: { flexDirection: 'row' },
   nutritionItem: { flex: 1, alignItems: 'center' },
-  nutritionValue: { fontSize: 26, fontWeight: '800' },
-  nutritionLabel: { fontSize: 12, color: '#6B7280', marginTop: 2 },
-  nutritionDivider: { width: 1, backgroundColor: '#E5E7EB', marginHorizontal: 16 },
+  nutritionValue: { fontSize: 26, fontFamily: fontFamily.headingExtraBold, fontWeight: '800' },
+  nutritionLabel: { fontSize: 12, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, marginTop: 2 },
+  nutritionDivider: { width: 1, backgroundColor: colors.outlineVariant, marginHorizontal: 16 },
 });

@@ -1,0 +1,86 @@
+// PrimaryButton — filled indigo rounded button.
+import React from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { colors, radii, typography } from '../../theme';
+
+/**
+ * PrimaryButton
+ * @param {string} title  button label (or pass children)
+ * @param {function} onPress
+ * @param {boolean} disabled
+ * @param {boolean} loading  shows spinner, disables press
+ * @param {React.ReactNode} icon  optional leading element (e.g. emoji Text)
+ * @param {boolean} fullWidth  stretch to container width (default true)
+ * @param {object} style  outer override
+ * @param {object} contentStyle  label/text style override
+ */
+export default function PrimaryButton({
+  title,
+  onPress,
+  disabled = false,
+  loading = false,
+  icon,
+  fullWidth = true,
+  children,
+  style,
+  contentStyle,
+  ...rest
+}) {
+  const isDisabled = disabled || loading;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={isDisabled}
+      accessibilityRole="button"
+      style={({ pressed }) => [
+        styles.btn,
+        fullWidth && styles.fullWidth,
+        pressed && !isDisabled && styles.pressed,
+        isDisabled && styles.disabled,
+        style,
+      ]}
+      {...rest}
+    >
+      {loading ? (
+        <ActivityIndicator color={colors.onPrimary} />
+      ) : (
+        <View style={styles.row}>
+          {icon ? <View style={styles.icon}>{icon}</View> : null}
+          {title != null ? (
+            <Text style={[styles.label, contentStyle]}>{title}</Text>
+          ) : (
+            children
+          )}
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  btn: {
+    backgroundColor: colors.primary,
+    borderRadius: radii.md,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 52,
+  },
+  fullWidth: { alignSelf: 'stretch' },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  icon: { marginRight: 8 },
+  label: {
+    ...typography.labelMd,
+    fontSize: 16,
+    color: colors.onPrimary,
+  },
+  pressed: { opacity: 0.9, transform: [{ scale: 0.98 }] },
+  disabled: { opacity: 0.5 },
+});

@@ -1,0 +1,37 @@
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+ios/build/
+ios/Pods/
+android/build/
+android/app/build/
+android/.gradle/
+*.xcworkspace/xcuserdata/
+
+# Metro
+.metro-health-check*
+
+# debug / logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# macOS
+.DS_Store
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# misc
+*.orig.*
+/tmp/
