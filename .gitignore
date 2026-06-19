@@ -7,13 +7,9 @@ dist/
 web-build/
 expo-env.d.ts
 
-# Native
-ios/build/
-ios/Pods/
-android/build/
-android/app/build/
-android/.gradle/
-*.xcworkspace/xcuserdata/
+# Native (CNG — generated from app.config.js by prebuild / EAS Build)
+/ios
+/android
 
 # Metro
 .metro-health-check*
