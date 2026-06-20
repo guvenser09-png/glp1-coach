@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { colors, radii, typography } from '../../theme';
+import { tap as hapticTap } from '../../utils/haptics';
 
 /**
  * PrimaryButton
@@ -42,9 +43,14 @@ export default function PrimaryButton({
       : typeof title === 'string'
       ? title
       : undefined;
+  // Light haptic on tap, then defer to the caller's handler (args preserved).
+  const handlePress = (...args) => {
+    hapticTap();
+    if (onPress) onPress(...args);
+  };
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       disabled={isDisabled}
       accessibilityRole={accessibilityRole}
       accessibilityLabel={a11yLabel}

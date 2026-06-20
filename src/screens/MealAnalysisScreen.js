@@ -27,7 +27,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { getUserProfile } from '../services/firestoreService';
 import { analyzeMealWithAI, analyzeMealWithText } from '../services/openaiService';
 import { OPENAI_API_KEY } from '../config';
-import { saveMealAnalysis } from '../services/firestoreService';
+import { getTodayMeals, addMeal, deleteMeal, updateMeal, getMealLogs } from '../services/firestoreService';
 import { getWeightLogs } from '../services/firestoreService';
 import { calculateMuscleScore, calculateReboundRisk } from '../utils/heuristics';
 import { getMedicationProfile } from '../services/medicationService';
@@ -194,7 +194,7 @@ export default function MealAnalysisScreen({ navigation }) {
 
 
   const today = new Date().toISOString().split('T')[0];
-  const todayMealsKey = user ? `daily_meals_${user.uid}_${today}` : null;
+  // Meals now live in Supabase (meal_logs) — no more daily_meals_ AsyncStorage key.
   const todayExerciseKey = user ? `daily_exercise_${user.uid}_${today}` : null;
   const freeAnalysesKey = user ? `free_analyses_${user.uid}_${today}` : null;
 
@@ -242,15 +242,18 @@ export default function MealAnalysisScreen({ navigation }) {
     return Math.round(met * w * (durationMin / 60) * intensityMult);
   };
 
+  // Today's meals come FROM Supabase (meal_logs), oldest->newest. Guarded so a
+  // network hiccup just leaves the current list intact instead of crashing.
   const loadTodayMeals = useCallback(async () => {
-    if (!todayMealsKey) return;
+    if (!user) return;
     try {
-      const raw = await AsyncStorage.getItem(todayMealsKey);
-      if (raw) setTodayMeals(JSON.parse(raw));
+      const meals = await getTodayMeals(user.uid);
+      if (Array.isArray(meals)) setTodayMeals(meals);
     } catch (e) {}
-  }, [todayMealsKey]);
+  }, [user]);
 
   useEffect(() => { loadTodayMeals(); }, [loadTodayMeals]);
+  useFocusEffect(useCallback(() => { loadTodayMeals(); }, [loadTodayMeals]));
 
   useEffect(() => {
     if (!todayExerciseKey) return;
@@ -270,19 +273,33 @@ export default function MealAnalysisScreen({ navigation }) {
       let totalRatio = 0;
       let daysWithData = 0;
       const rows = [];
+      // Meals now live in Supabase (meal_logs). Fetch once and group by date,
+      // instead of the dead AsyncStorage `daily_meals_` key (nothing writes it).
+      const allMeals = await getMealLogs(user.uid);
+      const byDate = {};
+      for (const m of Array.isArray(allMeals) ? allMeals : []) {
+        const k = m.date;
+        if (!k) continue;
+        if (!byDate[k]) byDate[k] = { grams: 0, foodCal: 0, count: 0 };
+        byDate[k].grams += m.protein || 0;
+        byDate[k].foodCal += m.calories || 0;
+        byDate[k].count += 1;
+      }
       for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
         const dateStr = d.toISOString().split('T')[0];
         const dayName = isTr ? DAY_NAMES_TR[d.getDay()] : DAY_NAMES_EN[d.getDay()];
-        const rawMeals = await AsyncStorage.getItem(`daily_meals_${user.uid}_${dateStr}`);
-        const rawEx = await AsyncStorage.getItem(`daily_exercise_${user.uid}_${dateStr}`);
-        const exList = rawEx ? JSON.parse(rawEx) : [];
+        let exList = [];
+        try {
+          const rawEx = await AsyncStorage.getItem(`daily_exercise_${user.uid}_${dateStr}`);
+          exList = rawEx ? JSON.parse(rawEx) : [];
+        } catch { exList = []; }
         const exerciseCal = exList.reduce((s, e) => s + (e.caloriesBurned || 0), 0);
-        if (rawMeals) {
-          const meals = JSON.parse(rawMeals);
-          const grams = meals.reduce((s, m) => s + (m.protein || 0), 0);
-          const foodCal = meals.reduce((s, m) => s + (m.calories || 0), 0);
+        const day = byDate[dateStr];
+        if (day && day.count > 0) {
+          const grams = day.grams;
+          const foodCal = day.foodCal;
           const balance = foodCal > 0 ? foodCal - (bmr + exerciseCal) : null;
           totalRatio += target > 0 ? grams / target : 0;
           daysWithData++;
@@ -454,13 +471,6 @@ export default function MealAnalysisScreen({ navigation }) {
     }
   }
 
-  async function saveMeals(meals) {
-    setTodayMeals(meals);
-    if (todayMealsKey) {
-      await AsyncStorage.setItem(todayMealsKey, JSON.stringify(meals));
-    }
-  }
-
   async function pickImage() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -529,22 +539,33 @@ export default function MealAnalysisScreen({ navigation }) {
       const analysis = await analyzeMealWithAI(imageUri, language);
       await incrementFreeCount();
       setResult(analysis);
+      // Persist to Supabase (meal_logs) and capture the returned row (incl. id),
+      // then recompute the list from what actually got saved.
+      const created = user
+        ? await addMeal(user.uid, {
+            protein: analysis.protein,
+            calories: analysis.calories || 0,
+            foodType: analysis.foodType,
+            portionSize: analysis.portionSize,
+            imageUri,
+          })
+        : null;
+      // Keep session-only extras (timestamp for the time label) on the in-memory row.
       const newMeal = {
-        protein: analysis.protein,
-        calories: analysis.calories || 0,
-        foodType: analysis.foodType,
-        portionSize: analysis.portionSize,
-        imageUri,
+        ...(created || {
+          protein: analysis.protein,
+          calories: analysis.calories || 0,
+          foodType: analysis.foodType,
+          portionSize: analysis.portionSize,
+          imageUri,
+        }),
         timestamp: new Date().toISOString(),
       };
       const updatedMeals = [...todayMeals, newMeal];
-      await saveMeals(updatedMeals);
+      setTodayMeals(updatedMeals);
       await completeMission('upload_meal');
       await earnXP(10, '📸 Meal analyzed!');
       if (updatedMeals.length >= 3) await completeMission('log_3_meals');
-      if (user) {
-        try { await saveMealAnalysis(user.uid, { ...analysis, imageUri }); } catch {}
-      }
     } catch (e) {
       Alert.alert(
         isTr ? 'Analiz Yapılamadı' : 'Analysis Unavailable',
@@ -596,24 +617,36 @@ export default function MealAnalysisScreen({ navigation }) {
       return;
     }
     const portionMultiplier = manualPortion === 'Small' ? 0.75 : manualPortion === 'Large' ? 1.35 : 1;
-    const meal = {
+    const existing = editIndex !== null ? todayMeals[editIndex] : null;
+    // Fields that persist to Supabase (meal_logs columns only).
+    const persistedFields = {
       foodType: manualResult.foodType,
       protein: Math.round(manualResult.protein * portionMultiplier),
       calories: Math.round(manualResult.calories * portionMultiplier),
       portionSize: manualPortion,
+    };
+    // Session-only extras kept in memory for richer UI (not stored).
+    const sessionExtras = {
       suggestion: manualResult.suggestion,
       muscleScore: manualResult.muscleScore,
       qualityTags: manualResult.qualityTags,
-      timestamp: editIndex !== null ? todayMeals[editIndex].timestamp : new Date().toISOString(),
+      timestamp: existing ? existing.timestamp : new Date().toISOString(),
     };
     let updated;
-    if (editIndex !== null) {
-      updated = todayMeals.map((m, i) => (i === editIndex ? meal : m));
+    if (existing) {
+      // Edit -> persist by id, then reflect locally.
+      if (user && existing.id != null) {
+        try { await updateMeal(user.uid, existing.id, persistedFields); } catch {}
+      }
+      const merged = { ...existing, ...persistedFields, ...sessionExtras };
+      updated = todayMeals.map((m, i) => (i === editIndex ? merged : m));
+      setTodayMeals(updated);
     } else {
-      updated = [...todayMeals, meal];
-    }
-    await saveMeals(updated);
-    if (editIndex === null) {
+      // Add -> insert and capture the returned id.
+      const created = user ? await addMeal(user.uid, persistedFields) : null;
+      const newMeal = { ...(created || persistedFields), ...sessionExtras };
+      updated = [...todayMeals, newMeal];
+      setTodayMeals(updated);
       await completeMission('upload_meal');
       await earnXP(20, '🍽️ Meal logged!');
       if (updated.length >= 3) await completeMission('log_3_meals');
@@ -701,8 +734,13 @@ export default function MealAnalysisScreen({ navigation }) {
           text: isTr ? 'Sil' : 'Delete',
           style: 'destructive',
           onPress: async () => {
+            const target = todayMeals[index];
+            // Optimistic local removal, then delete the row from Supabase by id.
             const updated = todayMeals.filter((_, i) => i !== index);
-            await saveMeals(updated);
+            setTodayMeals(updated);
+            if (user && target?.id != null) {
+              try { await deleteMeal(user.uid, target.id); } catch {}
+            }
           },
         },
       ]
@@ -722,7 +760,12 @@ export default function MealAnalysisScreen({ navigation }) {
   }
 
   function formatTime(iso) {
-    return new Date(iso).toLocaleTimeString(isTr ? 'tr-TR' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+    // Meals loaded from Supabase have no client timestamp — skip the time label
+    // rather than render "Invalid Date".
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString(isTr ? 'tr-TR' : 'en-US', { hour: '2-digit', minute: '2-digit' });
   }
 
   const totalProtein = todayMeals.reduce((s, m) => s + (m.protein || 0), 0);
@@ -1197,16 +1240,18 @@ export default function MealAnalysisScreen({ navigation }) {
             <FlatList
               data={todayMeals}
               scrollEnabled={false}
-              keyExtractor={(item, index) => item.timestamp || String(index)}
+              keyExtractor={(item, index) => (item.id != null ? String(item.id) : item.timestamp || String(index))}
               renderItem={({ item: meal, index }) => (
                 <View style={[styles.mealItem, index < todayMeals.length - 1 && styles.mealBorder]}>
                   <Text style={styles.mealEmoji}>{getFoodEmoji(meal.foodType)}</Text>
                   <View style={styles.mealInfo}>
                     <Text style={styles.mealName}>{meal.foodType}</Text>
                     <Text style={styles.mealMeta}>
-                      {formatTime(meal.timestamp)}
-                      {meal.calories ? ` · ${meal.calories} kcal` : ''}
-                      {meal.portionSize ? ` · ${portionLabel(meal.portionSize)}` : ''}
+                      {[
+                        formatTime(meal.timestamp),
+                        meal.calories ? `${meal.calories} kcal` : '',
+                        meal.portionSize ? portionLabel(meal.portionSize) : '',
+                      ].filter(Boolean).join(' · ')}
                     </Text>
                   </View>
                   <Text style={styles.mealProtein}>{meal.protein}g</Text>

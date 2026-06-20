@@ -29,21 +29,32 @@ export default function StatCard({
   ...rest
 }) {
   const tone = semantic[deltaTone] || semantic.success;
+  // Compose a single VoiceOver label so the value+unit+label+delta are read as
+  // one element instead of 4 separate fragments. e.g. "Weight, 82.4 kg, -1.2".
+  const composedLabel = [label, [value, unit].filter(Boolean).join(' '), delta]
+    .filter(Boolean)
+    .join(', ');
   return (
     <Card onPress={onPress} style={style} contentStyle={contentStyle} {...rest}>
-      <View style={styles.headerRow}>
-        {label ? <Text style={styles.label}>{label}</Text> : null}
-        {icon ? <View style={styles.icon}>{icon}</View> : null}
-      </View>
-      <View style={styles.valueRow}>
-        <Text style={styles.value}>{value}</Text>
-        {unit ? <Text style={styles.unit}>{unit}</Text> : null}
-      </View>
-      {delta ? (
-        <View style={[styles.deltaPill, { backgroundColor: tone.bg }]}>
-          <Text style={[styles.deltaText, { color: tone.fg }]}>{delta}</Text>
+      <View
+        accessible
+        accessibilityLabel={composedLabel || undefined}
+        accessibilityRole={onPress ? 'button' : undefined}
+      >
+        <View style={styles.headerRow}>
+          {label ? <Text style={styles.label}>{label}</Text> : null}
+          {icon ? <View style={styles.icon}>{icon}</View> : null}
         </View>
-      ) : null}
+        <View style={styles.valueRow}>
+          <Text style={styles.value}>{value}</Text>
+          {unit ? <Text style={styles.unit}>{unit}</Text> : null}
+        </View>
+        {delta ? (
+          <View style={[styles.deltaPill, { backgroundColor: tone.bg }]}>
+            <Text style={[styles.deltaText, { color: tone.fg }]}>{delta}</Text>
+          </View>
+        ) : null}
+      </View>
     </Card>
   );
 }

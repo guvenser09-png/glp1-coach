@@ -2,6 +2,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radii, typography } from '../../theme';
+import { tap as hapticTap } from '../../utils/haptics';
 
 /**
  * Chip
@@ -25,6 +26,13 @@ export default function Chip({
   ...rest
 }) {
   const Container = onPress ? Pressable : View;
+  // Light haptic on tap, then defer to the caller's handler (args preserved).
+  const handlePress = onPress
+    ? (...args) => {
+        hapticTap();
+        onPress(...args);
+      }
+    : undefined;
   const a11yLabel =
     accessibilityLabel != null
       ? accessibilityLabel
@@ -33,7 +41,7 @@ export default function Chip({
       : undefined;
   return (
     <Container
-      onPress={onPress}
+      onPress={handlePress}
       accessibilityRole={accessibilityRole || (onPress ? 'button' : undefined)}
       accessibilityLabel={a11yLabel}
       accessibilityState={onPress ? { selected } : undefined}

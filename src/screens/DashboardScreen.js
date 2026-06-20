@@ -41,6 +41,8 @@ import {
   getWeightLogs,
   getUserProfile,
   saveUserProfile,
+  getTodayMeals,
+  getMealLogs,
 } from '../services/firestoreService';
 import {
   getMedicationProfile,
@@ -127,7 +129,7 @@ function getMuscleScoreLabel(score, language) {
       desc: isTr
         ? 'Protein alımınız kaslarınızı çok iyi koruyor.'
         : 'Your protein intake is protecting your muscles well.',
-      color: '#10B981',
+      color: colors.success,
     };
   }
   if (score >= 65) {
@@ -137,7 +139,7 @@ function getMuscleScoreLabel(score, language) {
       desc: isTr
         ? 'Daha iyi sonuçlar için proteini biraz artırın.'
         : 'Slightly increase protein for better results.',
-      color: '#4F46E5',
+      color: colors.primary,
     };
   }
   if (score >= 40) {
@@ -147,7 +149,7 @@ function getMuscleScoreLabel(score, language) {
       desc: isTr
         ? 'Protein alımı optimal değil. Günlük hedefe ulaşmaya çalışın.'
         : 'Protein intake is below optimal. Try to reach your daily target.',
-      color: '#F59E0B',
+      color: colors.warning,
     };
   }
   return {
@@ -156,7 +158,7 @@ function getMuscleScoreLabel(score, language) {
     desc: isTr
       ? 'Çok düşük protein alımı. Kas koruma için bugün proteine öncelik verin.'
       : 'Very low protein intake. Prioritize protein today for muscle maintenance.',
-    color: '#EF4444',
+    color: colors.danger,
   };
 }
 
@@ -169,8 +171,8 @@ function getReboundRiskContent(level, language) {
       desc: isTr
         ? 'Alışkanlıklarınız ilerlemenizi korumaya yardımcı oluyor. Devam edin!'
         : 'Your habits are helping sustain your progress. Keep it up!',
-      color: '#10B981',
-      bg: '#ECFDF5',
+      color: colors.success,
+      bg: colors.successBg,
     };
   }
   if (level === 'Medium') {
@@ -180,8 +182,8 @@ function getReboundRiskContent(level, language) {
       desc: isTr
         ? 'Bazı alışkanlıkların dikkat gerektiriyor. Protein ve harekete odaklan.'
         : 'Some habits need attention. Focus on protein and movement.',
-      color: '#D97706',
-      bg: '#FFFBEB',
+      color: colors.warning,
+      bg: colors.warningBg,
     };
   }
   return {
@@ -190,8 +192,8 @@ function getReboundRiskContent(level, language) {
     desc: isTr
       ? 'Hızlı kilo kaybı + düşük protein = sürdürülebilirlik riski. Hemen protein kaynaklarına yönelin.'
       : 'Fast weight loss + low protein = sustainability risk. Add protein sources now.',
-    color: '#EF4444',
-    bg: '#FEF2F2',
+    color: colors.danger,
+    bg: colors.dangerBg,
   };
 }
 
@@ -203,7 +205,7 @@ const getAfterTips = (language) => {
   return [
     {
       icon: '🥩',
-      iconBg: '#ECFDF5',
+      iconBg: colors.successBg,
       title: isTr ? 'Önce Protein' : 'Protein First',
       text: isTr
         ? 'Her öğüne protein kaynağıyla başlayın. Tokluk ve kas koruma için her öğünde 25-35g protein hedefleyin.'
@@ -211,7 +213,7 @@ const getAfterTips = (language) => {
     },
     {
       icon: '🏋️',
-      iconBg: '#EEF2FF',
+      iconBg: colors.infoBg,
       title: isTr ? 'Güç Egzersizi' : 'Strength Training',
       text: isTr
         ? 'Haftada 2-3 kez direnç antrenmanı kas kütlenizi korur ve metabolizmanızı hızlandırır.'
@@ -219,7 +221,7 @@ const getAfterTips = (language) => {
     },
     {
       icon: '🧘',
-      iconBg: '#F0FDF4',
+      iconBg: colors.successBg,
       title: isTr ? 'Yavaş Yiyin' : 'Eat Slowly',
       text: isTr
         ? 'Yavaş yemek tokluk sinyallerinin beyne ulaşmasına yardımcı olur — her öğünde en az 20 dakika ayırın.'
@@ -227,7 +229,7 @@ const getAfterTips = (language) => {
     },
     {
       icon: '🌾',
-      iconBg: '#FFFBEB',
+      iconBg: colors.warningBg,
       title: isTr ? 'Karbonhidratı İzleyin' : 'Watch Carbs',
       text: isTr
         ? 'Rafine karbonhidratları kompleks olanlarla değiştirin (yulaf, kinoa, bulgur). Bu, kan şekerini dengede tutar ve enerjiyi korur.'
@@ -457,24 +459,34 @@ export default function DashboardScreen({ navigation }) {
             .map((l) => ({ date: l.date, weight: l.weight }));
         }
 
-        // Load today's analyzed meals
-        const mealsKey = `daily_meals_${user.uid}_${today}`;
-        const rawMeals = await AsyncStorage.getItem(mealsKey);
-        if (rawMeals) setTodayMeals(JSON.parse(rawMeals));
-
-        // Compute 7-day average protein ratio (same method as weekly report)
+        // Load meals from Supabase (single source of truth — fixes the
+        // split-brain where the dashboard read local AsyncStorage while
+        // meal logging wrote to Supabase). getMealLogs returns every meal
+        // (each row carries its own `date`); we group/filter by date in JS.
+        // getTodayMeals is RLS-scoped + date-filtered to today, oldest→newest.
         const target = userProfile?.proteinTarget ?? PROTEIN_TARGET;
+        const [todaysMeals, allMeals] = await Promise.all([
+          getTodayMeals(user.uid),
+          getMealLogs(user.uid),
+        ]);
+        setTodayMeals(Array.isArray(todaysMeals) ? todaysMeals : []);
+
+        // Protein per day, summed from each meal row's `date`.
+        const proteinByDate = {};
+        (Array.isArray(allMeals) ? allMeals : []).forEach((m) => {
+          if (!m || !m.date) return;
+          proteinByDate[m.date] = (proteinByDate[m.date] || 0) + (m.protein || 0);
+        });
+
+        // 7-day average protein ratio — group the last 7 dates that have meals.
         let totalRatio = 0;
         let days = 0;
         for (let i = 0; i < 7; i++) {
           const d = new Date();
           d.setDate(d.getDate() - i);
           const dateStr = d.toISOString().split('T')[0];
-          const key = `daily_meals_${user.uid}_${dateStr}`;
-          const raw = await AsyncStorage.getItem(key);
-          if (raw) {
-            const meals = JSON.parse(raw);
-            const dayProtein = meals.reduce((s, m) => s + (m.protein || 0), 0);
+          if (proteinByDate[dateStr] != null) {
+            const dayProtein = proteinByDate[dateStr];
             totalRatio += target > 0 ? dayProtein / target : 0;
             days++;
           }
@@ -487,10 +499,10 @@ export default function DashboardScreen({ navigation }) {
           const latestWeight = history.length > 0 ? history[history.length - 1].weight : null;
           const prevWt = history.length > 1 ? history[history.length - 2].weight : null;
           const wChange = latestWeight && prevWt ? parseFloat((prevWt - latestWeight).toFixed(1)) : 0;
-          const todayMealsRaw = await AsyncStorage.getItem(`daily_meals_${user.uid}_${today}`);
-          const todayProtein = todayMealsRaw
-            ? JSON.parse(todayMealsRaw).reduce((s, m) => s + (m.protein || 0), 0)
-            : 0;
+          const todayProtein = (Array.isArray(todaysMeals) ? todaysMeals : []).reduce(
+            (s, m) => s + (m.protein || 0),
+            0
+          );
           const { musclePct: notifMusclePct } = getFatMuscleRatio(computedAvgRatio);
           await schedulePersonalizedNotifications(
             {
@@ -1210,7 +1222,7 @@ const styles = StyleSheet.create({
   reboundRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   reboundEmoji: { fontSize: 22, marginTop: 1 },
   reboundTitle: { fontSize: 14, fontFamily: fontFamily.headingBold, fontWeight: '800', marginBottom: 4 },
-  reboundDesc: { fontSize: 13, fontFamily: fontFamily.body, color: '#374151', lineHeight: 18 },
+  reboundDesc: { fontSize: 13, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, lineHeight: 18 },
   reboundBtn: {
     alignSelf: 'flex-start',
     marginTop: 10,
@@ -1431,7 +1443,7 @@ const styles = StyleSheet.create({
     width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary,
     alignItems: 'center', justifyContent: 'center',
   },
-  sendBtnDisabled: { backgroundColor: '#C7D2FE' },
+  sendBtnDisabled: { backgroundColor: colors.outlineVariant },
   sendBtnText: { color: colors.onPrimary, fontSize: 18 },
   heroPill: {
     alignSelf: 'flex-start',
@@ -1472,8 +1484,8 @@ const styles = StyleSheet.create({
   },
   stepEmoji: { fontSize: 24, marginTop: 1 },
   stepCount: { fontSize: 20, fontWeight: '800', fontFamily: fontFamily.headingBold },
-  stepGoal: { fontSize: 13, fontWeight: '500', color: '#6B7280', fontFamily: fontFamily.bodyMedium },
-  stepMsg: { fontSize: 12, color: '#374151', marginTop: 3, lineHeight: 17, fontFamily: fontFamily.body },
+  stepGoal: { fontSize: 13, fontWeight: '500', color: colors.outline, fontFamily: fontFamily.bodyMedium },
+  stepMsg: { fontSize: 12, color: colors.onSurfaceVariant, marginTop: 3, lineHeight: 17, fontFamily: fontFamily.body },
 
   // ── Streak Banner ──
   streakBanner: {
@@ -1513,7 +1525,7 @@ const styles = StyleSheet.create({
   },
   muscleAlertEmoji: { fontSize: 22 },
   muscleAlertTitle: { fontSize: 14, fontWeight: '800', marginBottom: 2, fontFamily: fontFamily.headingBold },
-  muscleAlertDesc: { fontSize: 12, color: '#374151', lineHeight: 17, fontFamily: fontFamily.body },
+  muscleAlertDesc: { fontSize: 12, color: colors.onSurfaceVariant, lineHeight: 17, fontFamily: fontFamily.body },
   muscleAlertBtn: {
     borderRadius: 10,
     paddingHorizontal: 12,
@@ -1553,7 +1565,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
   },
-  splitBarLegendText: { fontSize: 12, fontWeight: '600', color: '#374151', fontFamily: fontFamily.bodySemiBold },
+  splitBarLegendText: { fontSize: 12, fontWeight: '600', color: colors.onSurfaceVariant, fontFamily: fontFamily.bodySemiBold },
 
   // ── 14-Day Projection ──
   projectionCard: {
@@ -1581,8 +1593,8 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
     fontFamily: fontFamily.bodySemiBold,
-    color: '#92400E',
-    backgroundColor: '#FDE68A',
+    color: colors.warning,
+    backgroundColor: colors.warningBg,
     borderRadius: 20,
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -1606,7 +1618,7 @@ const styles = StyleSheet.create({
   },
   proj3BarFat: { backgroundColor: colors.success },
   proj3BarMuscle: {},
-  proj3Fat: { fontSize: 11, fontWeight: '600', color: '#059669', textAlign: 'center', fontFamily: fontFamily.bodySemiBold },
+  proj3Fat: { fontSize: 11, fontWeight: '600', color: colors.success, textAlign: 'center', fontFamily: fontFamily.bodySemiBold },
   proj3Muscle: { fontSize: 11, fontWeight: '700', textAlign: 'center', marginTop: 2, fontFamily: fontFamily.bodySemiBold },
   proj3RiskRange: { fontSize: 10, fontWeight: '500', textAlign: 'center', marginTop: 1, fontFamily: fontFamily.bodyMedium },
 
@@ -1614,7 +1626,7 @@ const styles = StyleSheet.create({
   projDisclaimer: {
     marginTop: 10,
     fontSize: 11,
-    color: '#9CA3AF',
+    color: colors.outline,
     lineHeight: 15,
     textAlign: 'center',
     fontStyle: 'italic',
@@ -1624,13 +1636,13 @@ const styles = StyleSheet.create({
   projTip: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#FFFBEB',
+    backgroundColor: colors.warningBg,
     borderRadius: 10,
     padding: 10,
     gap: 8,
   },
   projTipIcon: { fontSize: 16, marginTop: 1 },
-  projTipText: { flex: 1, fontSize: 13, color: '#374151', fontWeight: '500', lineHeight: 18, fontFamily: fontFamily.bodyMedium },
+  projTipText: { flex: 1, fontSize: 13, color: colors.onSurfaceVariant, fontWeight: '500', lineHeight: 18, fontFamily: fontFamily.bodyMedium },
 
   // ── Protein Why Card ──
   proteinWhyCard: {
@@ -1639,12 +1651,12 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#C7D2FE',
+    borderColor: colors.outlineVariant,
   },
   proteinWhyText: { fontSize: 13, fontFamily: fontFamily.bodySemiBold, fontWeight: '600', color: colors.primaryDark, marginBottom: 8, lineHeight: 18 },
   proteinThresholds: { flexDirection: 'row', gap: 6 },
   proteinThresholdPill: { flex: 1, borderRadius: 8, paddingVertical: 4, alignItems: 'center' },
-  proteinThresholdPillText: { fontSize: 10, fontWeight: '700', color: '#374151', fontFamily: fontFamily.bodySemiBold },
+  proteinThresholdPillText: { fontSize: 10, fontWeight: '700', color: colors.onSurfaceVariant, fontFamily: fontFamily.bodySemiBold },
 
   // ── Risk Factors ──
   riskFactors: {
@@ -1653,8 +1665,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(0,0,0,0.08)',
   },
-  riskFactorsTitle: { fontSize: 12, fontWeight: '700', color: '#374151', marginBottom: 6, fontFamily: fontFamily.bodySemiBold },
-  riskFactor: { fontSize: 12, color: '#6B7280', marginBottom: 3, lineHeight: 16, fontFamily: fontFamily.body },
+  riskFactorsTitle: { fontSize: 12, fontWeight: '700', color: colors.onSurfaceVariant, marginBottom: 6, fontFamily: fontFamily.bodySemiBold },
+  riskFactor: { fontSize: 12, color: colors.outline, marginBottom: 3, lineHeight: 16, fontFamily: fontFamily.body },
 
   // ── Empty state ──
   emptyCard: {
@@ -1707,11 +1719,11 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    borderTopColor: colors.outlineVariant,
   },
   scoreFactor: { alignItems: 'center', flex: 1 },
   scoreFactorDot: { fontSize: 14, marginBottom: 2 },
-  scoreFactorText: { fontSize: 11, color: '#6B7280', textAlign: 'center', fontWeight: '500', fontFamily: fontFamily.bodyMedium },
+  scoreFactorText: { fontSize: 11, color: colors.outline, textAlign: 'center', fontWeight: '500', fontFamily: fontFamily.bodyMedium },
 
   // ── Rebound Risk Card ──
   riskCard: {

@@ -150,25 +150,35 @@ export default function WeeklyReportScreen({ navigation }) {
       let totalRatio = 0;
       let daysWithData = 0;
       const dayRows = [];
+      // Meals come from Supabase (meal_logs, already fetched above) — group by
+      // date. The old `daily_meals_` AsyncStorage key is no longer written.
+      const byDate = {};
+      for (const m of Array.isArray(mealLogs) ? mealLogs : []) {
+        const k = m.date;
+        if (!k) continue;
+        if (!byDate[k]) byDate[k] = { grams: 0, foodCal: 0, count: 0 };
+        byDate[k].grams += m.protein || 0;
+        byDate[k].foodCal += m.calories || 0;
+        byDate[k].count += 1;
+      }
+      const userWeight = profile?.weight || 70;
+      const userGender = profile?.gender;
+      const bmr = Math.round(userWeight * (userGender === 'male' ? 24 : userGender === 'female' ? 22 : 23));
       for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
         const dateStr = d.toISOString().split('T')[0];
-        const key = `daily_meals_${userId}_${dateStr}`;
-        const raw = await AsyncStorage.getItem(key);
         const dayName = isTr ? DAY_NAMES_TR[d.getDay()] : DAY_NAMES_EN[d.getDay()];
-        const exerciseKey = `daily_exercise_${userId}_${dateStr}`;
-        const exRaw = await AsyncStorage.getItem(exerciseKey);
-        const exercises = exRaw ? JSON.parse(exRaw) : [];
+        let exercises = [];
+        try {
+          const exRaw = await AsyncStorage.getItem(`daily_exercise_${userId}_${dateStr}`);
+          exercises = exRaw ? JSON.parse(exRaw) : [];
+        } catch { exercises = []; }
         const exerciseCal = exercises.reduce((s, e) => s + (e.caloriesBurned || 0), 0);
-        const userWeight = profile?.weight || 70;
-        const userGender = profile?.gender;
-        const bmr = Math.round(userWeight * (userGender === 'male' ? 24 : userGender === 'female' ? 22 : 23));
-
-        if (raw) {
-          const meals = JSON.parse(raw);
-          const grams = meals.reduce((s, m) => s + (m.protein || 0), 0);
-          const foodCal = meals.reduce((s, m) => s + (m.calories || 0), 0);
+        const day = byDate[dateStr];
+        if (day && day.count > 0) {
+          const grams = day.grams;
+          const foodCal = day.foodCal;
           const balance = foodCal > 0 ? foodCal - (bmr + exerciseCal) : null;
           totalRatio += target > 0 ? grams / target : 0;
           daysWithData++;
@@ -403,7 +413,15 @@ export default function WeeklyReportScreen({ navigation }) {
         </View>
 
         {/* ── Hero Card: This Week summary ── */}
-        <GradientHero style={styles.hero}>
+        <GradientHero
+          style={styles.hero}
+          accessible
+          accessibilityLabel={
+            isTr
+              ? `Bu hafta: ${weeklyChange > 0 ? `${formatWeight(weeklyChangeAbs)} kaybedildi` : weeklyChange < 0 ? `${formatWeight(weeklyChangeAbs)} alındı` : 'değişim yok'}. Toplam kayıp ${formatWeight(Math.abs(totalLost))}, yağ kaybı ${formatWeight(totalFatLost)}, ortalama protein %${avgPctLabel}.`
+              : `This week: ${weeklyChange > 0 ? `lost ${formatWeight(weeklyChangeAbs)}` : weeklyChange < 0 ? `gained ${formatWeight(weeklyChangeAbs)}` : 'no change'}. Total lost ${formatWeight(Math.abs(totalLost))}, fat lost ${formatWeight(totalFatLost)}, ${avgPctLabel}% average protein.`
+          }
+        >
           <Text style={styles.heroTitle}>
             {isTr ? '📉 Bu Hafta' : '📉 This Week'}
           </Text>
@@ -618,8 +636,19 @@ export default function WeeklyReportScreen({ navigation }) {
           title={isTr ? '🥛 Günlük Protein Takibi' : '🥛 Daily Protein Tracker'}
           style={styles.section}
         />
-        <Card contentStyle={styles.chartInner}>
-          <View style={styles.proteinChartHeader}>
+        <Card
+          contentStyle={styles.chartInner}
+          accessibilityLabel={
+            isTr
+              ? `Günlük protein takibi. Hedef günde ${proteinTarget} gram. ${dailyProtein
+                  .map((d) => `${d.dayName}: ${d.hasData ? `${d.grams} gram, hedefin %${Math.round(Math.min(d.ratio, 1) * 100)}` : 'veri yok'}`)
+                  .join('. ')}.`
+              : `Daily protein tracker. Target ${proteinTarget} grams per day. ${dailyProtein
+                  .map((d) => `${d.dayName}: ${d.hasData ? `${d.grams} grams, ${Math.round(Math.min(d.ratio, 1) * 100)}% of target` : 'no data'}`)
+                  .join('. ')}.`
+          }
+        >
+          <View style={styles.proteinChartHeader} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
             <Text style={styles.proteinChartSubtitle}>
               {isTr ? `Hedef: ${proteinTarget}g / gün` : `Target: ${proteinTarget}g / day`}
             </Text>
@@ -638,7 +667,12 @@ export default function WeeklyReportScreen({ navigation }) {
             const barColor = pct >= 1 ? colors.success : pct >= 0.6 ? colors.warning : colors.danger;
             const bgColor  = pct >= 1 ? colors.successBg : pct >= 0.6 ? colors.warningBg : colors.dangerBg;
             return (
-              <View key={i} style={[styles.proteinDayRow, i < dailyProtein.length - 1 && styles.proteinDayBorder]}>
+              <View
+                key={i}
+                style={[styles.proteinDayRow, i < dailyProtein.length - 1 && styles.proteinDayBorder]}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
                 <Text style={styles.proteinDayName}>{day.dayName}</Text>
                 <View style={styles.proteinBarContainer}>
                   <View style={styles.proteinBarBg}>

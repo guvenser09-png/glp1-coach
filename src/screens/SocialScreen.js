@@ -152,7 +152,6 @@ export default function SocialScreen() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onSelectFilter = useCallback(
@@ -449,6 +448,13 @@ export default function SocialScreen() {
               source={{ uri: item.mealPhotoUri }}
               style={styles.mealPhoto}
               resizeMode="cover"
+              accessible
+              accessibilityRole="image"
+              accessibilityLabel={
+                isTr
+                  ? `${item.authorName} tarafından paylaşılan öğün fotoğrafı`
+                  : `Meal photo by ${item.authorName}`
+              }
             />
           )}
 
@@ -467,6 +473,16 @@ export default function SocialScreen() {
               onPress={() => onToggleLike(item.id)}
               hitSlop={8}
               accessibilityRole="button"
+              accessibilityState={{ selected: !!item.likedByMe }}
+              accessibilityLabel={
+                item.likedByMe
+                  ? isTr
+                    ? `Beğeniyi geri al, ${item.likes || 0} beğeni`
+                    : `Unlike, ${item.likes || 0} likes`
+                  : isTr
+                  ? `Beğen, ${item.likes || 0} beğeni`
+                  : `Like, ${item.likes || 0} likes`
+              }
               style={({ pressed }) => [
                 styles.likeBtn,
                 item.likedByMe && styles.likeBtnActive,
@@ -666,11 +682,20 @@ export default function SocialScreen() {
                         source={{ uri: composePhoto }}
                         style={styles.photoPreview}
                         resizeMode="cover"
+                        accessible
+                        accessibilityRole="image"
+                        accessibilityLabel={
+                          isTr
+                            ? 'Seçilen öğün fotoğrafı önizlemesi'
+                            : 'Selected meal photo preview'
+                        }
                       />
                       <Pressable
                         onPress={() => setComposePhoto(null)}
                         style={styles.removePhotoBtn}
                         hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={isTr ? 'Fotoğrafı kaldır' : 'Remove photo'}
                       >
                         <Text style={styles.removePhotoText}>✕</Text>
                       </Pressable>

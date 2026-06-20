@@ -132,6 +132,7 @@ export async function saveWeightLog(userId, weight) {
 // Map a DB meal row (snake_case) -> the camelCase meal shape screens expect.
 function mapMealRow(row) {
   return {
+    id: row.id,
     protein: row.protein,
     calories: row.calories,
     foodType: row.food_type,
@@ -147,7 +148,8 @@ export async function getMealLogs(userId) {
     const { data, error } = await supabase
       .from('meal_logs')
       .select('*')
-      .order('date', { ascending: true });
+      .order('date', { ascending: true })
+      .order('id', { ascending: true });
     if (error || !Array.isArray(data)) return [];
     return data.map(mapMealRow);
   } catch {
@@ -174,5 +176,87 @@ export async function saveMealAnalysis(userId, analysisData) {
     return analysisData;
   } catch {
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Today's meals — single source of truth for the meal log UI.
+// RLS scopes every query to the signed-in user; we filter by date = today and
+// return oldest->newest so the list reads top-to-bottom chronologically.
+// All calls are guarded and return safe values ([] / null) so a network hiccup
+// never crashes the screen.
+// ---------------------------------------------------------------------------
+
+// getTodayMeals(uid): today's meals only, oldest->newest, mapped to camelCase.
+export async function getTodayMeals(userId) {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('meal_logs')
+      .select('*')
+      .eq('date', today())
+      .order('id', { ascending: true });
+    if (error || !Array.isArray(data)) return [];
+    return data.map(mapMealRow);
+  } catch {
+    return [];
+  }
+}
+
+// addMeal(uid, meal): insert one meal (camelCase in) and return the created row
+// (camelCase out, including the new id). Returns null on error.
+export async function addMeal(userId, meal) {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const uid = await resolveUserId(userId);
+    if (!uid) return null;
+    const m = meal || {};
+    const { data, error } = await supabase
+      .from('meal_logs')
+      .insert({
+        user_id: uid,
+        protein: m.protein,
+        calories: m.calories,
+        food_type: m.foodType,
+        portion_size: m.portionSize,
+        image_uri: m.imageUri,
+        date: today(),
+      })
+      .select()
+      .single();
+    if (error || !data) return null;
+    return mapMealRow(data);
+  } catch {
+    return null;
+  }
+}
+
+// deleteMeal(uid, id): remove one meal by id. RLS ensures only the owner's row
+// can be deleted. Resolves silently on error.
+export async function deleteMeal(userId, id) {
+  if (!isSupabaseConfigured() || id == null) return;
+  try {
+    await supabase.from('meal_logs').delete().eq('id', id);
+  } catch {
+    // best-effort
+  }
+}
+
+// updateMeal(uid, id, fields): patch one meal by id. Accepts camelCase fields
+// and maps to snake_case columns (only known columns are written).
+export async function updateMeal(userId, id, fields) {
+  if (!isSupabaseConfigured() || id == null) return;
+  try {
+    const f = fields || {};
+    const patch = {};
+    if (f.protein !== undefined) patch.protein = f.protein;
+    if (f.calories !== undefined) patch.calories = f.calories;
+    if (f.foodType !== undefined) patch.food_type = f.foodType;
+    if (f.portionSize !== undefined) patch.portion_size = f.portionSize;
+    if (f.imageUri !== undefined) patch.image_uri = f.imageUri;
+    if (Object.keys(patch).length === 0) return;
+    await supabase.from('meal_logs').update(patch).eq('id', id);
+  } catch {
+    // best-effort
   }
 }
