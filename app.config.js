@@ -98,9 +98,11 @@ export default {
     scheme: "glp1coach",
     extra: {
       // NOTE: never put the OpenAI secret key here — anything in `extra` ships in
-      // the client bundle. The key lives only on the server proxy (see server/).
+      // the client bundle. The OpenAI key lives ONLY on the Supabase edge proxy.
+      // Supabase URL + publishable key are safe to ship (public by design).
+      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || "https://jzfjpwoxglacrqxfhvjd.supabase.co",
+      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "sb_publishable_jL_RoPuZesNFM-Vwt3sB1g_UEHz38t4",
       revenuecatApiKey: process.env.REVENUECAT_API_KEY || "",
-      aiProxyUrl: process.env.EXPO_PUBLIC_AI_PROXY_URL || "",
       eas: {
         projectId: "b328678b-4d82-4468-9028-6890cf5aad20",
       },

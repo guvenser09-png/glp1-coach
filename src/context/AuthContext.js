@@ -1,7 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as AppleAuthentication from 'expo-apple-authentication';
-import * as Crypto from 'expo-crypto';
+import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 
 const AuthContext = createContext({
   user: null,
@@ -11,62 +9,52 @@ const AuthContext = createContext({
   signInWithEmail: async () => {},
 });
 
-// B5: never let corrupt/garbage storage crash startup or sign-in.
-// Parse defensively and fall back to a safe default on any error.
-function safeParse(raw, fallback = null) {
-  if (raw == null) return fallback;
-  try {
-    return JSON.parse(raw);
-  } catch (e) {
-    return fallback;
+// Build the app-facing user shape from a Supabase auth user.
+// displayName comes from user_metadata.name, else the email prefix.
+function mapUser(authUser) {
+  if (!authUser) return null;
+  const email = authUser.email || '';
+  const metaName =
+    authUser.user_metadata && authUser.user_metadata.name
+      ? String(authUser.user_metadata.name).trim()
+      : '';
+  const displayName = metaName || (email ? email.split('@')[0] : 'User');
+  return {
+    uid: authUser.id,
+    email,
+    displayName,
+  };
+}
+
+// Map raw Supabase auth errors to short, friendly codes the UI can switch on.
+// Bilingual user-facing wording lives in the screens; we throw stable codes.
+function friendlyAuthError(error) {
+  const msg = String((error && error.message) || error || '').toLowerCase();
+  if (msg.includes('invalid login') || msg.includes('invalid credentials')) {
+    return new Error('wrong-password');
   }
-}
-
-// A4: strengthen the email -> uid derivation. Replace the weak 31-multiplier
-// hash with a cryptographic SHA-256 digest of the normalized email. Returns a
-// stable, collision-resistant id. Falls back to a non-crypto digest only if
-// the native module is somehow unavailable, preserving deterministic behavior.
-async function uidFromEmail(email) {
-  const normalized = String(email).trim().toLowerCase();
-  try {
-    const digest = await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      'glp1-uid:' + normalized
-    );
-    // Keep the existing 'email-' prefix; truncate the hex for a compact id.
-    return 'email-' + digest.slice(0, 32);
-  } catch (e) {
-    // Defensive fallback — keeps auth working even if crypto digest fails.
-    let hash = 0;
-    for (let i = 0; i < normalized.length; i++) {
-      hash = (hash * 31 + normalized.charCodeAt(i)) | 0;
-    }
-    return 'email-' + Math.abs(hash).toString(36);
+  if (
+    msg.includes('already registered') ||
+    msg.includes('already exists') ||
+    msg.includes('user already')
+  ) {
+    return new Error('email-exists');
   }
-}
-
-// A2: hash passwords (salted SHA-256) before storing; never store plaintext.
-// Salt is a per-account random hex string so identical passwords don't collide.
-async function makeSalt() {
-  try {
-    const bytes = await Crypto.getRandomBytesAsync(16);
-    return Array.from(bytes)
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  } catch (e) {
-    // Extremely unlikely; fall back to a UUID-derived salt.
-    return Crypto.randomUUID().replace(/-/g, '');
+  if (msg.includes('email not confirmed') || msg.includes('not confirmed')) {
+    return new Error('confirm-email');
   }
+  if (msg.includes('invalid email') || msg.includes('email address')) {
+    return new Error('invalid-email');
+  }
+  if (msg.includes('password')) {
+    // e.g. "Password should be at least 6 characters"
+    return new Error('weak-password');
+  }
+  if (msg.includes('network') || msg.includes('fetch')) {
+    return new Error('network-error');
+  }
+  return new Error((error && error.message) || 'auth-error');
 }
-
-async function hashPassword(password, salt) {
-  return Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    'glp1-pwd:' + salt + ':' + String(password)
-  );
-}
-
-const MOCK_USER_KEY = 'mock_user';
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -74,103 +62,128 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let mounted = true;
-    AsyncStorage.getItem(MOCK_USER_KEY)
-      .then((raw) => {
+
+    // If Supabase isn't configured, don't hang on the splash — just resolve.
+    if (!isSupabaseConfigured()) {
+      setLoading(false);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    // Initial session check: hydrate the user, then flip loading off.
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
         if (!mounted) return;
-        // B5: guard JSON.parse so a corrupt record can't white-screen startup.
-        const parsed = safeParse(raw, null);
-        if (parsed) setUser(parsed);
+        setUser(mapUser(data && data.session ? data.session.user : null));
         setLoading(false);
       })
       .catch(() => {
         if (mounted) setLoading(false);
       });
+
+    // Keep the user in sync with sign-in / sign-out / token refresh.
+    let subscription = null;
+    try {
+      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (!mounted) return;
+        setUser(mapUser(session ? session.user : null));
+        setLoading(false);
+      });
+      subscription = data ? data.subscription : null;
+    } catch (e) {
+      // Never let auth-listener setup crash startup.
+    }
+
     return () => {
       mounted = false;
+      try {
+        if (subscription) subscription.unsubscribe();
+      } catch (e) {
+        // ignore
+      }
     };
   }, []);
 
   const signOut = async () => {
-    await AsyncStorage.removeItem(MOCK_USER_KEY);
-    setUser(null);
+    try {
+      if (isSupabaseConfigured()) {
+        await supabase.auth.signOut();
+      }
+    } catch (e) {
+      // Even if the network call fails, clear local user so the UI returns to login.
+    } finally {
+      setUser(null);
+    }
   };
 
+  // Apple sign-in requires extra native + Supabase provider setup (nonce,
+  // identity token exchange). Until that's configured, fail gracefully instead
+  // of crashing — email is the primary path now.
   const signInWithApple = async () => {
-    const credential = await AppleAuthentication.signInAsync({
-      requestedScopes: [
-        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-        AppleAuthentication.AppleAuthenticationScope.EMAIL,
-      ],
-    });
-    const existingRaw = await AsyncStorage.getItem('apple_user_' + credential.user);
-    // B5: guard JSON.parse on the stored Apple record.
-    const existing = safeParse(existingRaw, null);
-    const firstName = credential.fullName?.givenName || existing?.firstName || '';
-    const lastName = credential.fullName?.familyName || existing?.lastName || '';
-    const displayName = [firstName, lastName].filter(Boolean).join(' ') || 'Apple User';
-    const appleUser = {
-      uid: 'apple-' + credential.user,
-      email: credential.email || existing?.email || `apple@privaterelay.appleid.com`,
-      displayName,
-      provider: 'apple',
-    };
-    await AsyncStorage.setItem('apple_user_' + credential.user, JSON.stringify({
-      firstName, lastName, email: appleUser.email,
-    }));
-    await AsyncStorage.setItem(MOCK_USER_KEY, JSON.stringify(appleUser));
-    setUser(appleUser);
-    return { user: appleUser };
+    throw new Error('apple-unavailable');
   };
 
-  // Email sign-in / sign-up (local, cross-platform — works on Android & iOS).
-  // Creates the account on first use, restores it on return (basic local check).
+  // Email sign-up / sign-in via Supabase Auth.
+  // If `name` is provided -> sign up (new account). Otherwise -> sign in.
   const signInWithEmail = async (email, password, name) => {
     const cleanEmail = String(email || '').trim().toLowerCase();
     if (!cleanEmail || !password) {
       throw new Error('missing-credentials');
     }
-    const uid = await uidFromEmail(cleanEmail);
-    const accountKey = 'email_account_' + uid;
-    const existingRaw = await AsyncStorage.getItem(accountKey);
-    // B5: guard JSON.parse — corrupt account record is treated as no account.
-    const existing = safeParse(existingRaw, null);
-
-    if (existing) {
-      // Returning user — verify password against the stored hash.
-      if (existing.passwordHash && existing.passwordSalt) {
-        // A2: compare hashes, never plaintext.
-        const candidate = await hashPassword(password, existing.passwordSalt);
-        if (candidate !== existing.passwordHash) {
-          throw new Error('wrong-password');
-        }
-      } else if (existing.password) {
-        // A2 migration: legacy plaintext record. Verify against plaintext once,
-        // then transparently upgrade to a salted hash below.
-        if (existing.password !== password) {
-          throw new Error('wrong-password');
-        }
-      }
+    if (!isSupabaseConfigured()) {
+      throw new Error('auth-unavailable');
     }
 
-    const displayName =
-      (name && name.trim()) || existing?.displayName || cleanEmail.split('@')[0];
-    const emailUser = {
-      uid,
-      email: cleanEmail,
-      displayName,
-      provider: 'email',
-    };
+    const wantsSignUp = !!(name && String(name).trim());
 
-    // A2: always persist a freshly salted hash — never store the plaintext.
-    const passwordSalt = existing?.passwordSalt || (await makeSalt());
-    const passwordHash = await hashPassword(password, passwordSalt);
-    await AsyncStorage.setItem(
-      accountKey,
-      JSON.stringify({ ...emailUser, passwordHash, passwordSalt })
-    );
-    await AsyncStorage.setItem(MOCK_USER_KEY, JSON.stringify(emailUser));
-    setUser(emailUser);
-    return { user: emailUser };
+    try {
+      if (wantsSignUp) {
+        const { data, error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password,
+          options: { data: { name: String(name).trim() } },
+        });
+        if (error) throw friendlyAuthError(error);
+
+        // Some projects already have this email but unconfirmed: supabase-js
+        // returns a user with an empty identities array and no session.
+        if (
+          data &&
+          data.user &&
+          Array.isArray(data.user.identities) &&
+          data.user.identities.length === 0
+        ) {
+          throw new Error('email-exists');
+        }
+
+        // Email-confirmation enabled -> no session until the user confirms.
+        if (!data || !data.session) {
+          throw new Error('confirm-email');
+        }
+
+        const mapped = mapUser(data.session.user);
+        setUser(mapped);
+        return { user: mapped };
+      }
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+      if (error) throw friendlyAuthError(error);
+      if (!data || !data.session) {
+        throw new Error('auth-error');
+      }
+      const mapped = mapUser(data.session.user);
+      setUser(mapped);
+      return { user: mapped };
+    } catch (e) {
+      // Re-throw typed/coded errors as-is; wrap anything unexpected.
+      if (e instanceof Error && e.message) throw e;
+      throw new Error('auth-error');
+    }
   };
 
   return (

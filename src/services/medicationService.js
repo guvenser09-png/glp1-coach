@@ -1,32 +1,21 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// Medication service — backed by Supabase (RLS-scoped to the signed-in user).
+// Exported SIGNATURES are kept identical to the previous AsyncStorage version so
+// screens don't change; only the persistence internals were swapped. The pure
+// scheduling helpers (getNextInjectionDate / getDaysUntilNextInjection) are
+// unchanged. Every call is wrapped so the UI never crashes on a network error.
+import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 
-// ── Storage keys (namespaced per user uid, matching firestoreService pattern) ──
-
-const profileKey = (uid) => `medication_profile_${uid}`;
-const doseLogsKey = (uid) => `dose_logs_${uid}`;
-const doseChangesKey = (uid) => `dose_changes_${uid}`;
-
-// Soft safety caps to bound storage growth without dropping real history.
-// Raised far above any realistic long-term use so logs are never silently lost
-// (B2): weekly GLP-1 titration over many years stays well under these limits.
-const MAX_DOSE_CHANGES = 5000;
-const MAX_DOSE_LOGS = 5000;
-
-// Safely parse JSON from AsyncStorage; returns `fallback` on missing/corrupt
-// data instead of throwing (B5: unguarded JSON.parse).
-function safeParse(raw, fallback) {
-  if (raw == null) return fallback;
+async function resolveUserId(fallbackUid) {
   try {
-    const parsed = JSON.parse(raw);
-    return parsed == null ? fallback : parsed;
-  } catch (e) {
-    return fallback;
+    const { data, error } = await supabase.auth.getUser();
+    if (!error && data?.user?.id) return data.user.id;
+  } catch {
+    // ignore
   }
+  return fallbackUid || null;
 }
 
-// ── Dose helpers ─────────────────────────────────────────────────────────────────
-
-// Parse a leading number from a legacy dose string like '0.5 mg' -> 0.5.
+// ── Dose helpers (pure) ────────────────────────────────────────────────────────
 function parseDoseMg(doseStr) {
   if (typeof doseStr !== 'string') return null;
   const match = doseStr.match(/-?\d+(\.\d+)?/);
@@ -34,19 +23,13 @@ function parseDoseMg(doseStr) {
   const n = Number(match[0]);
   return Number.isNaN(n) ? null : n;
 }
-
-// Today as YYYY-MM-DD, matching the date format used by logDose.
 function todayDateString() {
   return new Date().toISOString().split('T')[0];
 }
-
-// Build a display string from numeric dose + unit, e.g. 0.5 + 'mg' -> '0.5 mg'.
 function formatDose(doseMg, doseUnit) {
   if (doseMg == null || Number.isNaN(Number(doseMg))) return '';
   return `${doseMg} ${doseUnit || 'mg'}`;
 }
-
-// Normalize a profile so doseMg/doseUnit and the legacy 'dose' string are in sync.
 function normalizeProfileDose(profile) {
   if (!profile) return profile;
   const doseUnit = profile.doseUnit || 'mg';
@@ -57,174 +40,152 @@ function normalizeProfileDose(profile) {
   return { ...profile, doseMg: doseMg == null ? null : Number(doseMg), doseUnit, dose };
 }
 
-// ── Medication profile ─────────────────────────────────────────────────────────
+// DB row (snake_case) -> app profile shape (camelCase).
+function mapProfileRow(row) {
+  if (!row) return null;
+  return normalizeProfileDose({
+    drug: row.drug || 'Other',
+    doseMg: row.dose_mg == null ? null : Number(row.dose_mg),
+    doseUnit: row.dose_unit || 'mg',
+    frequency: row.frequency || 'weekly',
+    injectionWeekday: row.injection_weekday,
+    status: row.status || 'currentlyUsing',
+    reminderHour: row.reminder_hour,
+    reminderMinute: row.reminder_minute,
+    startDate: row.start_date,
+  });
+}
 
-/**
- * profile shape:
- * {
- *   drug,             // 'Ozempic' | 'Wegovy' | 'Mounjaro' | 'Other'
- *   dose,             // legacy display string, e.g. '0.5 mg' (kept in sync with doseMg)
- *   doseMg,           // numeric dose, e.g. 0.5 (number | null)
- *   doseUnit,         // 'mg' (default)
- *   frequency,        // 'weekly' (default)
- *   injectionWeekday, // 0-6 (0 = Sunday)
- *   startDate,        // ISO string
- *   status,           // 'currentlyUsing' | 'recentlyStopped' | 'planningToStop'
- * }
- */
+// ── Medication profile ─────────────────────────────────────────────────────────
 export async function getMedicationProfile(uid) {
-  const raw = await AsyncStorage.getItem(profileKey(uid));
-  if (!raw) return null;
-  // Derive doseMg from the legacy 'dose' string when missing, and keep
-  // dose/doseMg/doseUnit consistent for existing screens.
-  const parsed = safeParse(raw, null);
-  if (!parsed) return null;
-  return normalizeProfileDose(parsed);
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const { data, error } = await supabase.from('medication_profile').select('*').maybeSingle();
+    if (error) return null;
+    return mapProfileRow(data);
+  } catch {
+    return null;
+  }
 }
 
 export async function saveMedicationProfile(uid, profile) {
   const merged = normalizeProfileDose({
-    drug: 'Other',
-    dose: '',
-    doseMg: null,
-    doseUnit: 'mg',
-    frequency: 'weekly',
-    injectionWeekday: 0,
-    startDate: new Date().toISOString(),
-    status: 'currentlyUsing',
+    drug: 'Other', dose: '', doseMg: null, doseUnit: 'mg', frequency: 'weekly',
+    injectionWeekday: 0, startDate: new Date().toISOString(), status: 'currentlyUsing',
     ...profile,
   });
-  await AsyncStorage.setItem(profileKey(uid), JSON.stringify(merged));
+  if (!isSupabaseConfigured()) return merged;
+  try {
+    const userId = await resolveUserId(uid);
+    if (!userId) return merged;
+    await supabase.from('medication_profile').upsert({
+      user_id: userId,
+      drug: merged.drug,
+      dose_mg: merged.doseMg,
+      dose_unit: merged.doseUnit,
+      frequency: merged.frequency,
+      injection_weekday: merged.injectionWeekday,
+      status: merged.status,
+      reminder_hour: merged.reminderHour ?? null,
+      reminder_minute: merged.reminderMinute ?? null,
+      start_date: merged.startDate ? String(merged.startDate).split('T')[0] : null,
+    }, { onConflict: 'user_id' });
+  } catch {
+    // best-effort
+  }
   return merged;
 }
 
 // ── Dose logs ──────────────────────────────────────────────────────────────────
-
-export async function logDose(uid, { date, dose }) {
-  const key = doseLogsKey(uid);
-  const raw = await AsyncStorage.getItem(key);
-  const logs = safeParse(raw, []);
-  logs.push({
-    date: date || new Date().toISOString().split('T')[0],
-    dose: dose || '',
-    timestamp: new Date().toISOString(),
-  });
-  // Keep full dose history; only trim if it exceeds the high safety cap so we
-  // never silently drop a recent injection log (B2).
-  const trimmed = logs.length > MAX_DOSE_LOGS ? logs.slice(-MAX_DOSE_LOGS) : logs;
-  await AsyncStorage.setItem(key, JSON.stringify(trimmed));
-  return trimmed;
+export async function logDose(uid, { date, dose } = {}) {
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const userId = await resolveUserId(uid);
+    if (!userId) return await getDoseLogs(uid);
+    await supabase.from('dose_logs').insert({
+      user_id: userId,
+      dose: dose || '',
+      date: date || todayDateString(),
+    });
+  } catch {
+    // ignore
+  }
+  return await getDoseLogs(uid);
 }
 
 export async function getDoseLogs(uid) {
-  const raw = await AsyncStorage.getItem(doseLogsKey(uid));
-  return safeParse(raw, []);
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('dose_logs').select('*').order('date', { ascending: true });
+    if (error || !Array.isArray(data)) return [];
+    return data.map((r) => ({ date: r.date, dose: r.dose }));
+  } catch {
+    return [];
+  }
 }
 
 // ── Titration timeline (dose changes) ────────────────────────────────────────────
-
-/**
- * Returns the titration timeline: [{ date, doseMg }] sorted oldest -> newest.
- */
 export async function getDoseChanges(uid) {
-  const raw = await AsyncStorage.getItem(doseChangesKey(uid));
-  const changes = safeParse(raw, []);
-  return changes
-    .slice()
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('dose_changes').select('*').order('date', { ascending: true });
+    if (error || !Array.isArray(data)) return [];
+    return data.map((r) => ({ date: r.date, doseMg: r.dose_mg == null ? null : Number(r.dose_mg) }));
+  } catch {
+    return [];
+  }
 }
 
-/**
- * Appends a dose change to the persisted titration timeline and updates the
- * profile's doseMg/dose. Returns the updated changes array (oldest -> newest).
- */
 export async function recordDoseChange(uid, { doseMg, date } = {}) {
   const numericDose = doseMg == null ? null : Number(doseMg);
   const entry = {
     date: date || todayDateString(),
     doseMg: numericDose == null || Number.isNaN(numericDose) ? null : numericDose,
   };
-
-  const key = doseChangesKey(uid);
-  const raw = await AsyncStorage.getItem(key);
-  const changes = safeParse(raw, []);
-  changes.push(entry);
-
-  const sortedAll = changes.sort((a, b) =>
-    String(a.date).localeCompare(String(b.date))
-  );
-  // Retain the full titration timeline; only trim past the high safety cap (B2).
-  const sorted =
-    sortedAll.length > MAX_DOSE_CHANGES
-      ? sortedAll.slice(-MAX_DOSE_CHANGES)
-      : sortedAll;
-
-  await AsyncStorage.setItem(key, JSON.stringify(sorted));
-
-  // Keep the medication profile's numeric + legacy dose in sync.
-  const existing = await getMedicationProfile(uid);
-  if (existing) {
-    const doseUnit = existing.doseUnit || 'mg';
-    await saveMedicationProfile(uid, {
-      ...existing,
-      doseMg: entry.doseMg,
-      doseUnit,
-      dose: entry.doseMg == null ? existing.dose : formatDose(entry.doseMg, doseUnit),
-    });
+  if (!isSupabaseConfigured()) return [entry];
+  try {
+    const userId = await resolveUserId(uid);
+    if (userId) {
+      await supabase.from('dose_changes').insert({ user_id: userId, dose_mg: entry.doseMg, date: entry.date });
+      // Keep the profile's current dose in sync with the latest change.
+      const existing = await getMedicationProfile(uid);
+      if (existing) {
+        await saveMedicationProfile(uid, { ...existing, doseMg: entry.doseMg });
+      }
+    }
+  } catch {
+    // ignore
   }
-
-  return sorted;
+  return await getDoseChanges(uid);
 }
 
-// ── Injection scheduling helpers ────────────────────────────────────────────────
-
-/**
- * Returns the next injection Date based on injectionWeekday + frequency.
- * Weekly: next occurrence of injectionWeekday (today counts if it's that day).
- * Returns null if the profile has no usable injectionWeekday.
- */
+// ── Injection scheduling helpers (pure — unchanged) ──────────────────────────────
 export function getNextInjectionDate(profile) {
   if (!profile || profile.injectionWeekday == null) return null;
-
   const targetWeekday = Number(profile.injectionWeekday);
   if (Number.isNaN(targetWeekday)) return null;
-
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-  // Default to weekly cadence (the only frequency currently supported).
   const cadenceDays = profile.frequency === 'biweekly' ? 14 : 7;
-
   let diff = (targetWeekday - today.getDay() + 7) % 7;
-
-  // If the target day is today but cadence is longer than a week, keep today;
-  // for weekly we also keep today as the next injection day.
   const next = new Date(today);
   next.setDate(today.getDate() + diff);
-
-  // For biweekly, ensure at least the cadence interval has not been skipped
-  // relative to startDate by aligning to the nearest future cadence multiple.
   if (cadenceDays === 14 && profile.startDate) {
     const start = new Date(profile.startDate);
     if (!Number.isNaN(start.getTime())) {
       while (next < today) next.setDate(next.getDate() + 7);
     }
   }
-
   return next;
 }
 
-/**
- * Whole-day count from today until the next injection.
- * 0 means the injection is today. Returns null if undeterminable.
- */
 export function getDaysUntilNextInjection(profile) {
   const next = getNextInjectionDate(profile);
   if (!next) return null;
-
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const msPerDay = 24 * 60 * 60 * 1000;
-
   return Math.round((next.getTime() - today.getTime()) / msPerDay);
 }

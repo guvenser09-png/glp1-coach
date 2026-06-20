@@ -49,7 +49,16 @@ export default function LoginScreen() {
     try {
       await signInWithApple();
     } catch (err) {
-      if (err.code !== 'ERR_REQUEST_CANCELED') {
+      if (err?.code === 'ERR_REQUEST_CANCELED') {
+        // user cancelled — stay silent
+      } else if (err?.message === 'apple-unavailable') {
+        Alert.alert(
+          isTr ? 'Apple ile Giriş' : 'Apple Sign-In',
+          isTr
+            ? 'Apple ile giriş şu anda kullanılamıyor; şimdilik e-posta ile giriş yapın.'
+            : 'Apple sign-in is not available right now; use email for now.'
+        );
+      } else {
         Alert.alert(
           isTr ? 'Giriş Hatası' : 'Sign-In Error',
           isTr
@@ -86,10 +95,56 @@ export default function LoginScreen() {
     try {
       await signInWithEmail(cleanEmail, password, signupMode ? name : undefined);
     } catch (err) {
-      const msg =
-        err?.message === 'wrong-password'
-          ? isTr ? 'Şifre hatalı.' : 'Incorrect password.'
-          : isTr ? 'Giriş yapılamadı. Tekrar deneyin.' : 'Could not sign in. Please try again.';
+      const code = err?.message;
+
+      // Account created but e-mail not yet confirmed — friendly, not an error.
+      if (code === 'confirm-email') {
+        Alert.alert(
+          isTr ? 'E-postanı doğrula' : 'Check your email',
+          isTr
+            ? 'Hesabını onaylamak için e-postandaki doğrulama bağlantısına tıkla, sonra giriş yap.'
+            : 'Check your email to confirm your account, then sign in.'
+        );
+        return;
+      }
+
+      let msg;
+      switch (code) {
+        case 'wrong-password':
+          msg = isTr
+            ? 'E-posta veya şifre hatalı.'
+            : 'Incorrect email or password.';
+          break;
+        case 'email-exists':
+          msg = isTr
+            ? 'Bu e-posta zaten kayıtlı. Lütfen giriş yapın.'
+            : 'This email is already registered. Please sign in.';
+          break;
+        case 'invalid-email':
+          msg = isTr
+            ? 'Geçerli bir e-posta adresi girin.'
+            : 'Please enter a valid email address.';
+          break;
+        case 'weak-password':
+          msg = isTr
+            ? 'Şifre en az 6 karakter olmalıdır.'
+            : 'Password must be at least 6 characters.';
+          break;
+        case 'network-error':
+          msg = isTr
+            ? 'Bağlantı hatası. İnternetini kontrol edip tekrar dene.'
+            : 'Connection error. Check your internet and try again.';
+          break;
+        case 'auth-unavailable':
+          msg = isTr
+            ? 'Giriş şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyin.'
+            : 'Sign-in is unavailable right now. Please try again later.';
+          break;
+        default:
+          msg = isTr
+            ? 'Giriş yapılamadı. Tekrar deneyin.'
+            : 'Could not sign in. Please try again.';
+      }
       Alert.alert(isTr ? 'Giriş Hatası' : 'Sign-In Error', msg);
     } finally {
       setEmailLoading(false);

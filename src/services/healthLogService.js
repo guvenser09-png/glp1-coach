@@ -1,52 +1,32 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// Health log service — body measurements + symptoms, backed by Supabase
+// (RLS-scoped to the signed-in user). Exported SIGNATURES are identical to the
+// previous AsyncStorage version so screens don't change. Every call is guarded
+// so the UI never crashes on a network error.
+import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 
-// ── Storage keys (namespaced per user uid, matching medicationService pattern) ──
-
-const bodyMeasurementsKey = (uid) => `body_measurements_${uid}`;
-const symptomLogsKey = (uid) => `symptom_logs_${uid}`;
-
-// Soft safety caps to bound storage growth without dropping real history (B2).
-// Raised far above any realistic long-term use so measurements/symptoms are
-// never silently lost — years of daily logging stays well under these limits.
-const MAX_MEASUREMENTS = 5000;
-const MAX_SYMPTOMS = 5000;
-
-// Safely parse JSON from AsyncStorage; returns `fallback` on missing/corrupt
-// data instead of throwing (B5: unguarded JSON.parse).
-function safeParse(raw, fallback) {
-  if (raw == null) return fallback;
+async function resolveUserId(fallbackUid) {
   try {
-    const parsed = JSON.parse(raw);
-    return parsed == null ? fallback : parsed;
-  } catch (e) {
-    return fallback;
+    const { data, error } = await supabase.auth.getUser();
+    if (!error && data?.user?.id) return data.user.id;
+  } catch {
+    // ignore
   }
+  return fallbackUid || null;
 }
 
-// Body measurement fields (all in cm), all optional per entry.
 const MEASUREMENT_FIELDS = ['waist', 'arm', 'neck', 'chest', 'hip'];
-
-// Allowed symptom / side-effect types.
 const SYMPTOM_TYPES = ['nausea', 'fatigue', 'constipation', 'headache', 'appetite', 'other'];
 
-// ── Helpers ──────────────────────────────────────────────────────────────────────
-
-// Today as YYYY-MM-DD, matching the date format used by medicationService.
 function todayDateString() {
   return new Date().toISOString().split('T')[0];
 }
-
-// Parse a numeric cm value; returns null for empty / non-numeric input.
 function parseCm(value) {
   if (value == null || value === '') return null;
-  // Accept comma decimals (e.g. '92,5') as well as dots.
   const normalized = typeof value === 'string' ? value.replace(',', '.').trim() : value;
   if (normalized === '') return null;
   const n = Number(normalized);
   return Number.isNaN(n) ? null : n;
 }
-
-// Clamp severity to the 1-3 range (mild/moderate/severe); default to 1.
 function parseSeverity(value) {
   const n = Number(value);
   if (Number.isNaN(n)) return 1;
@@ -54,103 +34,66 @@ function parseSeverity(value) {
 }
 
 // ── Body measurements ──────────────────────────────────────────────────────────
-
-/**
- * Appends a body-measurement entry. Any subset of cm fields may be provided;
- * empty / non-numeric fields are ignored. Keeps the last ~60 entries.
- *
- * entry shape: { date, waist?, arm?, neck?, chest?, hip? } (cm values numeric)
- *
- * Returns the persisted entries array sorted oldest -> newest.
- */
 export async function saveMeasurement(uid, { date, waist, arm, neck, chest, hip } = {}) {
-  const entry = { date: date || todayDateString() };
-
+  const row = { date: date || todayDateString() };
   const incoming = { waist, arm, neck, chest, hip };
   for (const field of MEASUREMENT_FIELDS) {
     const cm = parseCm(incoming[field]);
-    if (cm != null) entry[field] = cm;
+    if (cm != null) row[field] = cm;
   }
-
-  const key = bodyMeasurementsKey(uid);
-  const raw = await AsyncStorage.getItem(key);
-  const entries = safeParse(raw, []);
-  entries.push(entry);
-
-  const sortedAll = entries.sort((a, b) =>
-    String(a.date).localeCompare(String(b.date))
-  );
-  // Retain full measurement history; only trim past the high safety cap (B2).
-  const sorted =
-    sortedAll.length > MAX_MEASUREMENTS
-      ? sortedAll.slice(-MAX_MEASUREMENTS)
-      : sortedAll;
-
-  await AsyncStorage.setItem(key, JSON.stringify(sorted));
-  return sorted;
+  if (!isSupabaseConfigured()) return await getMeasurements(uid);
+  try {
+    const userId = await resolveUserId(uid);
+    if (userId) {
+      await supabase.from('body_measurements').insert({ user_id: userId, ...row });
+    }
+  } catch {
+    // ignore
+  }
+  return await getMeasurements(uid);
 }
 
-/**
- * Returns all body-measurement entries sorted oldest -> newest.
- * Each entry: { date, waist?, arm?, neck?, chest?, hip? }.
- */
 export async function getMeasurements(uid) {
-  const raw = await AsyncStorage.getItem(bodyMeasurementsKey(uid));
-  const entries = safeParse(raw, []);
-  return entries
-    .slice()
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('body_measurements').select('*').order('date', { ascending: true });
+    if (error || !Array.isArray(data)) return [];
+    return data.map((r) => ({
+      date: r.date, waist: r.waist, arm: r.arm, neck: r.neck, chest: r.chest, hip: r.hip,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 // ── Symptoms / side effects ──────────────────────────────────────────────────────
-
-/**
- * Logs a symptom / side-effect entry.
- *
- * entry shape:
- * {
- *   date,      // YYYY-MM-DD (defaults to today)
- *   type,      // 'nausea' | 'fatigue' | 'constipation' | 'headache' | 'appetite' | 'other'
- *   severity,  // 1 (mild) | 2 (moderate) | 3 (severe)
- * }
- *
- * Returns the persisted entries array sorted newest -> oldest.
- */
 export async function logSymptom(uid, { date, type, severity } = {}) {
   const entry = {
     date: date || todayDateString(),
     type: SYMPTOM_TYPES.includes(type) ? type : 'other',
     severity: parseSeverity(severity),
-    timestamp: new Date().toISOString(),
   };
-
-  const key = symptomLogsKey(uid);
-  const raw = await AsyncStorage.getItem(key);
-  const entries = safeParse(raw, []);
-  entries.push(entry);
-
-  // Persist oldest -> newest, retaining full history; only trim past the high
-  // safety cap (B2). Returned newest-first below.
-  const sortedAll = entries.sort((a, b) =>
-    String(a.date).localeCompare(String(b.date))
-  );
-  const sorted =
-    sortedAll.length > MAX_SYMPTOMS
-      ? sortedAll.slice(-MAX_SYMPTOMS)
-      : sortedAll;
-
-  await AsyncStorage.setItem(key, JSON.stringify(sorted));
-  return sorted.slice().reverse();
+  if (!isSupabaseConfigured()) return await getSymptoms(uid);
+  try {
+    const userId = await resolveUserId(uid);
+    if (userId) {
+      await supabase.from('symptom_logs').insert({ user_id: userId, ...entry });
+    }
+  } catch {
+    // ignore
+  }
+  return await getSymptoms(uid);
 }
 
-/**
- * Returns all symptom entries sorted newest -> oldest.
- * Each entry: { date, type, severity }.
- */
 export async function getSymptoms(uid) {
-  const raw = await AsyncStorage.getItem(symptomLogsKey(uid));
-  const entries = safeParse(raw, []);
-  return entries
-    .slice()
-    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  if (!isSupabaseConfigured()) return [];
+  try {
+    const { data, error } = await supabase
+      .from('symptom_logs').select('*').order('date', { ascending: false });
+    if (error || !Array.isArray(data)) return [];
+    return data.map((r) => ({ date: r.date, type: r.type, severity: r.severity }));
+  } catch {
+    return [];
+  }
 }
