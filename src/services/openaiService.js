@@ -27,20 +27,127 @@ function sanitizeUserText(input, maxLen = 400) {
 // Works WITHOUT an OpenAI key: matches the typed description against the local
 // food database and sums protein/calories. Used as a fallback so meal logging
 // (and protein/calorie totals) still works when AI is unavailable.
+//
+// Enhancements (report C4):
+//  (1) Parse simple quantities/units from the text near each match (e.g.
+//      "150g chicken", "2 eggs", "3 dilim") and scale that food's
+//      protein/calories proportionally to its base portion when sensible.
+//  (2) Avoid double-counting overlapping matches (e.g. "chicken" inside
+//      "chicken breast", or one keyword inside another) by claiming text spans.
+//  (3) Same result shape as before, with offline:true. Never throws.
+
+// Parse a food's base `portion` string into { qty, unit } so a typed quantity
+// can be scaled against it. Units are normalized to a small vocabulary:
+//   'g'  → grams/ml,  'count' → pieces/eggs,  'slice' → dilim/slices.
+// Returns null when no base quantity can be confidently parsed (then we keep
+// the unscaled base values, matching the original behavior).
+function parseBasePortion(portion) {
+  try {
+    const p = String(portion || '').toLowerCase();
+    // slices → "4-5 dilim", "1 dilim", "40g dilim". Prefer this over grams when
+    // the portion is expressed in slices so a typed "3 dilim" scales correctly.
+    if (/\b(?:dilim|slice)/.test(p)) {
+      const slice = p.match(/(\d+(?:\s*-\s*\d+)?)\s*(?:dilim|slice)/);
+      if (slice) {
+        const nums = slice[1].split('-').map((n) => parseFloat(n));
+        const avg = nums.reduce((a, b) => a + b, 0) / nums.length;
+        if (avg > 0) return { qty: avg, unit: 'slice' };
+      }
+      // "40g dilim" etc. → no slice count given, treat base as 1 slice.
+      return { qty: 1, unit: 'slice' };
+    }
+    // grams / millilitres → treat as a gram-like scale.
+    const g = p.match(/(\d+(?:[.,]\d+)?)\s*(?:g|gr|ml)\b/);
+    if (g) return { qty: parseFloat(g[1].replace(',', '.')), unit: 'g' };
+    // countable pieces → "1 adet", "2 yumurta", "3 adet".
+    const c = p.match(/(\d+(?:[.,]\d+)?)\s*(?:adet|yumurta|egg|piece)/);
+    if (c) return { qty: parseFloat(c[1].replace(',', '.')), unit: 'count' };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// Look for a quantity that qualifies a matched food, searching the ~16 chars
+// immediately before the match (e.g. "150g ", "2 ", "3 dilim ") and, as a
+// fallback, a trailing unit right after it (e.g. "egg 2", "yumurta 3").
+// Returns { qty, unit } or null.
+function parseTypedQuantity(text, start, end) {
+  try {
+    const before = text.slice(Math.max(0, start - 16), start);
+    // "150g", "150 gr", "200ml" just before the food name.
+    let m = before.match(/(\d+(?:[.,]\d+)?)\s*(g|gr|ml)\b\s*$/);
+    if (m) return { qty: parseFloat(m[1].replace(',', '.')), unit: 'g' };
+    // "3 dilim", "2 slice" just before.
+    m = before.match(/(\d+(?:[.,]\d+)?)\s*(?:dilim|slice)\s*$/);
+    if (m) return { qty: parseFloat(m[1].replace(',', '.')), unit: 'slice' };
+    // bare count just before: "2 ", "3x ".
+    m = before.match(/(\d+(?:[.,]\d+)?)\s*x?\s*$/);
+    if (m) return { qty: parseFloat(m[1].replace(',', '.')), unit: 'count' };
+    // trailing count after the name: "egg 2", "yumurta 3".
+    const after = text.slice(end, end + 6);
+    m = after.match(/^\s*x?\s*(\d+(?:[.,]\d+)?)\b/);
+    if (m) return { qty: parseFloat(m[1].replace(',', '.')), unit: 'count' };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 function estimateMealOffline(description, isTr) {
   const text = String(description || '').toLowerCase();
   const matched = [];
   let protein = 0;
   let calories = 0;
+
+  // (2) Build candidate matches first, longest keyword preferred, so we can
+  // claim character spans and skip overlapping shorter matches (no double-count).
+  const candidates = [];
   for (const f of FOOD_DATABASE) {
-    const en = String(f.name || '').toLowerCase();
-    const tr = String(f.nameTr || '').toLowerCase();
-    if ((en && text.includes(en)) || (tr && text.includes(tr))) {
-      protein += Number(f.protein) || 0;
-      calories += Number(f.calories) || 0;
-      matched.push(isTr ? (f.nameTr || f.name) : f.name);
+    const keys = [String(f.name || '').toLowerCase(), String(f.nameTr || '').toLowerCase()];
+    let best = null;
+    for (const k of keys) {
+      if (!k) continue;
+      const idx = text.indexOf(k);
+      if (idx !== -1 && (!best || k.length > best.len)) {
+        best = { idx, len: k.length };
+      }
     }
+    if (best) candidates.push({ food: f, start: best.idx, end: best.idx + best.len });
   }
+  // Longest first; ties broken by earliest position for stable claiming.
+  candidates.sort((a, b) => (b.end - b.start) - (a.end - a.start) || a.start - b.start);
+
+  const claimed = []; // [start, end) ranges already consumed by a longer match.
+  const overlaps = (s, e) => claimed.some((r) => s < r[1] && e > r[0]);
+
+  for (const c of candidates) {
+    if (overlaps(c.start, c.end)) continue; // (2) skip overlapping shorter match
+    claimed.push([c.start, c.end]);
+
+    const f = c.food;
+    let baseP = Number(f.protein) || 0;
+    let baseC = Number(f.calories) || 0;
+
+    // (1) Scale by typed quantity vs the food's base portion when units agree.
+    const typed = parseTypedQuantity(text, c.start, c.end);
+    const base = parseBasePortion(f.portion);
+    if (typed && base && base.qty > 0 && typed.unit === base.unit) {
+      const factor = typed.qty / base.qty;
+      // Clamp to a sane range so a typo (e.g. "9999g") can't explode totals.
+      const safe = Math.min(Math.max(factor, 0.1), 20);
+      baseP = baseP * safe;
+      baseC = baseC * safe;
+    }
+
+    protein += baseP;
+    calories += baseC;
+    matched.push(isTr ? (f.nameTr || f.name) : f.name);
+  }
+
+  protein = Math.round(protein);
+  calories = Math.round(calories);
+
   if (matched.length === 0) {
     return {
       protein: 0,

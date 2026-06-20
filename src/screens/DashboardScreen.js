@@ -59,7 +59,7 @@ import {
   getLatestWeightKg,
 } from '../services/healthkitService';
 
-import { colors, semantic, spacing, radii, shadow, typography, fontFamily } from '../theme';
+import { spacing, radii, typography, fontFamily, useTheme } from '../theme';
 import {
   Card,
   GradientHero,
@@ -120,7 +120,7 @@ function getGreeting(language) {
   return isTr ? 'İyi akşamlar' : 'Good evening';
 }
 
-function getMuscleScoreLabel(score, language) {
+function getMuscleScoreLabel(score, language, colors) {
   const isTr = language === 'tr';
   if (score >= 85) {
     return {
@@ -162,7 +162,7 @@ function getMuscleScoreLabel(score, language) {
   };
 }
 
-function getReboundRiskContent(level, language) {
+function getReboundRiskContent(level, language, colors) {
   const isTr = language === 'tr';
   if (level === 'Low') {
     return {
@@ -200,7 +200,7 @@ function getReboundRiskContent(level, language) {
 // ─── Rebound detection (P0 stopped-medication journey) ──────────────────────
 // ─── Sustaining Your Progress Tips data ─────────────────────────────────────
 
-const getAfterTips = (language) => {
+const getAfterTips = (language, colors) => {
   const isTr = language === 'tr';
   return [
     {
@@ -243,6 +243,8 @@ const getAfterTips = (language) => {
 export default function DashboardScreen({ navigation }) {
   const { user } = useAuth();
   const { t, language } = useLanguage();
+  const { colors, semantic, shadow } = useTheme();
+  const styles = React.useMemo(() => makeStyles(colors, semantic, shadow), [colors, semantic, shadow]);
   const { formatWeight, formatHeight, toDisplayWeight, weightUnit, parseWeightToKg, weightRange, weightPlaceholder, weightLabel } = useUnit();
   const { completeMission, earnXP } = useGamification();
 
@@ -438,9 +440,9 @@ export default function DashboardScreen({ navigation }) {
     analyzedTodayProtein,
   });
 
-  const muscleScoreInfo = getMuscleScoreLabel(muscleScore, language);
-  const reboundInfo = getReboundRiskContent(riskData.level, language);
-  const afterTips = getAfterTips(language);
+  const muscleScoreInfo = getMuscleScoreLabel(muscleScore, language, colors);
+  const reboundInfo = getReboundRiskContent(riskData.level, language, colors);
+  const afterTips = getAfterTips(language, colors);
 
   const loadData = useCallback(async () => {
     let history = [];
@@ -1185,16 +1187,27 @@ export default function DashboardScreen({ navigation }) {
 // ─── Section Title sub-component ─────────────────────────────────────────────
 
 function SectionTitle({ title }) {
+  const { colors } = useTheme();
   return (
-    <View style={styles.sectionTitleRow}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+    <View style={{ marginTop: spacing.stackLg, marginBottom: 12 }}>
+      <Text
+        style={{
+          fontSize: 18,
+          fontFamily: fontFamily.headingBold,
+          fontWeight: '700',
+          color: colors.onSurface,
+          letterSpacing: -0.25,
+        }}
+      >
+        {title}
+      </Text>
     </View>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, semantic, shadow) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scroll: { flex: 1 },
   content: { padding: spacing.containerMargin, paddingTop: spacing.gutter },

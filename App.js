@@ -29,6 +29,12 @@ import { UnitProvider } from './src/context/UnitContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { colors } from './src/theme';
+import { initSentry } from './src/services/sentry';
+
+// Crash/error analytics (report D2). No-op unless a DSN is configured. Called at
+// module load so it runs once before the first render. / Çökme analitiği: DSN
+// yoksa no-op, ilk render'dan önce bir kez çalışır.
+initSentry();
 
 // Max time (ms) to wait on the font gate before rendering anyway. Fail-open: if a
 // font is slow or stalls, the app still renders (text falls back to the system

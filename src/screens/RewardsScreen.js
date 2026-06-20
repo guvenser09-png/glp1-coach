@@ -1,6 +1,6 @@
 // RewardsScreen — gamification / points hub (moved off Home, reachable from Settings).
 // Stitch-style: indigo gradient hero, clean white rounded cards, simple bars, soft shadows.
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,12 +12,11 @@ import {
 } from 'react-native';
 import { Screen, Card, GradientHero, ProgressBar, SectionTitle } from '../components/ui';
 import {
-  colors,
   spacing,
   radii,
   typography,
   fontFamily,
-  shadow,
+  useTheme,
 } from '../theme';
 import { useLanguage } from '../context/LanguageContext';
 import {
@@ -31,6 +30,8 @@ import {
 export default function RewardsScreen({ navigation }) {
   const { language } = useLanguage();
   const isTr = language === 'tr';
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   // Read whatever the context exposes; degrade gracefully for missing fields.
   const gamif = useGamification() || {};
@@ -214,7 +215,8 @@ export default function RewardsScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   // Header
   headerBar: {
     flexDirection: 'row',
@@ -384,4 +386,4 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     color: colors.onSurfaceVariant,
   },
-});
+  });

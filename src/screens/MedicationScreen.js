@@ -1,7 +1,7 @@
 // MedicationScreen — GLP-1 medication & dose tracking (GLP-1 Coach design system).
 // Profile summary + next-injection countdown, editable profile form,
 // "log dose taken today" action with dose history, and an injection-reminder toggle.
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -39,7 +39,7 @@ import {
   cancelMissedDoseNudge,
 } from '../services/notificationService';
 
-import { colors, semantic, typography, spacing, radii, fontFamily } from '../theme';
+import { typography, spacing, radii, fontFamily, useTheme } from '../theme';
 import {
   Screen,
   Card,
@@ -128,6 +128,8 @@ export default function MedicationScreen({ navigation }) {
   const { user } = useAuth();
   const { language } = useLanguage();
   const isTr = language === 'tr';
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1038,7 +1040,8 @@ export default function MedicationScreen({ navigation }) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: spacing.containerMargin, paddingTop: spacing.gutter },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -1285,4 +1288,4 @@ const styles = StyleSheet.create({
     marginTop: spacing.stackLg,
     paddingHorizontal: spacing.stackSm,
   },
-});
+  });

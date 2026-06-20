@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useLanguage } from '../context/LanguageContext';
-import { colors, fontFamily } from '../theme';
+import { fontFamily, useTheme } from '../theme';
 
 /**
  * CoachMessage
@@ -11,6 +11,8 @@ import { colors, fontFamily } from '../theme';
  */
 export default function CoachMessage({ message = '' }) {
   const { t } = useLanguage();
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <View style={styles.card} accessible accessibilityRole="summary" accessibilityLabel={`${t('coachTitle')}. ${message}`}>
@@ -34,7 +36,8 @@ export default function CoachMessage({ message = '' }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   card: {
     backgroundColor: colors.primary,
     borderRadius: 16,
@@ -92,4 +95,4 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: '400',
   },
-});
+  });

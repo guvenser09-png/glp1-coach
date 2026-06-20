@@ -2,7 +2,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '../../theme';
+import { useTheme } from '../../theme';
 
 /**
  * Screen
@@ -15,15 +15,17 @@ import { colors } from '../../theme';
 export default function Screen({
   children,
   edges = ['top', 'left', 'right'],
-  backgroundColor = colors.background,
+  backgroundColor,
   style,
   contentStyle,
   ...rest
 }) {
+  const { colors } = useTheme();
+  const bg = backgroundColor != null ? backgroundColor : colors.background;
   return (
     <SafeAreaView
       edges={edges}
-      style={[styles.safe, { backgroundColor }, style]}
+      style={[styles.safe, { backgroundColor: bg }, style]}
       {...rest}
     >
       <View style={[styles.content, contentStyle]}>{children}</View>

@@ -23,11 +23,10 @@ import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
-  colors,
   radii,
-  shadow,
   spacing,
   typography,
+  useTheme,
 } from '../theme';
 import {
   Screen,
@@ -94,6 +93,8 @@ export default function SocialScreen() {
   const { language } = useLanguage();
   const { user } = useAuth();
   const isTr = language === 'tr';
+  const { colors, shadow } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, shadow), [colors, shadow]);
 
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -503,7 +504,7 @@ export default function SocialScreen() {
         </Card>
       );
     },
-    [typeMeta, isTr, onOverflow, onToggleLike]
+    [typeMeta, isTr, onOverflow, onToggleLike, styles]
   );
 
   const listEmpty = useMemo(() => {
@@ -541,7 +542,7 @@ export default function SocialScreen() {
         )}
       </View>
     );
-  }, [loading, isTr, filter, openComposer]);
+  }, [loading, isTr, filter, openComposer, styles]);
 
   return (
     <Screen contentStyle={styles.screenContent}>
@@ -805,7 +806,8 @@ export default function SocialScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, shadow) =>
+  StyleSheet.create({
   screenContent: {
     flex: 1,
   },
@@ -1176,4 +1178,4 @@ const styles = StyleSheet.create({
     ...typography.labelMd,
     color: colors.onSurfaceVariant,
   },
-});
+  });

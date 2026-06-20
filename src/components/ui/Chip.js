@@ -1,7 +1,7 @@
 // Chip — pill-shaped, selectable filter/tag chip.
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radii, typography } from '../../theme';
+import { radii, typography, useTheme } from '../../theme';
 import { tap as hapticTap } from '../../utils/haptics';
 
 /**
@@ -25,6 +25,8 @@ export default function Chip({
   accessibilityLabel,
   ...rest
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const Container = onPress ? Pressable : View;
   // Light haptic on tap, then defer to the caller's handler (args preserved).
   const handlePress = onPress
@@ -71,26 +73,27 @@ export default function Chip({
   );
 }
 
-const styles = StyleSheet.create({
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: radii.pill,
-    borderWidth: 1,
-  },
-  unselected: {
-    backgroundColor: colors.surface,
-    borderColor: colors.outlineVariant,
-  },
-  selected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  icon: { marginRight: 6 },
-  label: { ...typography.labelMd },
-  labelUnselected: { color: colors.onSurfaceVariant },
-  labelSelected: { color: colors.onPrimary },
-  pressed: { opacity: 0.85 },
-});
+const makeStyles = (colors) =>
+  StyleSheet.create({
+    chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: radii.pill,
+      borderWidth: 1,
+    },
+    unselected: {
+      backgroundColor: colors.surface,
+      borderColor: colors.outlineVariant,
+    },
+    selected: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    icon: { marginRight: 6 },
+    label: { ...typography.labelMd },
+    labelUnselected: { color: colors.onSurfaceVariant },
+    labelSelected: { color: colors.onPrimary },
+    pressed: { opacity: 0.85 },
+  });

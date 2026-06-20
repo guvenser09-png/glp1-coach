@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,10 +19,8 @@ import { useLanguage } from '../context/LanguageContext';
 import { useUnit } from '../context/UnitContext';
 import { getUserProfile } from '../services/firestoreService';
 import { saveMedicationProfile } from '../services/medicationService';
-import { theme } from '../theme';
+import { fontFamily, spacing, radii, useTheme } from '../theme';
 import { Card, GradientHero, PrimaryButton, SecondaryButton, Ring, Badge } from '../components/ui';
-
-const { colors, fontFamily, spacing, radii, shadow } = theme;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -46,6 +44,8 @@ export default function OnboardingScreen({ navigation }) {
   const { t, language, setLanguage } = useLanguage();
   const { unitSystem, setUnitSystem, parseWeightToKg, parseHeightToCm, weightUnit, heightUnit, weightRange, heightRange } = useUnit();
   const isTr = language === 'tr';
+  const { colors, shadow } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, shadow), [colors, shadow]);
 
   const [step, setStep] = useState(0);
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
@@ -826,7 +826,8 @@ export default function OnboardingScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, shadow) =>
+  StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scroll: { flexGrow: 1, padding: spacing.lg },
   progressBar: {
@@ -1279,4 +1280,4 @@ const styles = StyleSheet.create({
   navRow: { flexDirection: 'row', alignItems: 'center' },
   backBtn: { marginRight: spacing.md - 4 },
   nextBtn: { flex: 1 },
-});
+  });

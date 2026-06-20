@@ -1,13 +1,15 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native';
 import { useGamification, MISSIONS, LEVELS, getCurrentLevel, getNextLevel, getXPProgress, calcHealthScore } from '../context/GamificationContext';
 import { useLanguage } from '../context/LanguageContext';
-import { colors, fontFamily } from '../theme';
+import { fontFamily, useTheme } from '../theme';
 
 export default function DailyQuestsCard({ proteinPct = 0, mealCount = 0, loggedWorkout = false, loggedWeight = false }) {
   const { completedMissions, dailyXP, totalXP, streak, xpFlash } = useGamification();
   const { language } = useLanguage();
   const isTr = language === 'tr';
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const level = getCurrentLevel(totalXP);
   const nextLevel = getNextLevel(totalXP);
@@ -157,7 +159,8 @@ export default function DailyQuestsCard({ proteinPct = 0, mealCount = 0, loggedW
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   card: {
     backgroundColor: '#1E1B4B',
     borderRadius: 20,
@@ -247,4 +250,4 @@ const styles = StyleSheet.create({
     borderRadius: 3, overflow: 'hidden',
   },
   healthBarFill: { height: '100%', borderRadius: 3 },
-});
+  });

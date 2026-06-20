@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { colors, typography, fontFamily, spacing, radii, shadow } from '../../theme';
+import { typography, fontFamily, spacing, radii, useTheme } from '../../theme';
 import { GradientHero } from '../../components/ui';
 
 const PRIVACY_TEXT = {
@@ -33,6 +33,8 @@ export default function LoginScreen() {
   const { signInWithApple, signInWithEmail } = useAuth();
   const { language } = useLanguage();
   const isTr = language === 'tr';
+  const { colors, shadow } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, shadow), [colors, shadow]);
   const [loading, setLoading] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [termsVisible, setTermsVisible] = useState(false);
@@ -393,7 +395,8 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, shadow) =>
+  StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   container: {
@@ -572,4 +575,4 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     color: colors.onSurfaceVariant,
   },
-});
+  });

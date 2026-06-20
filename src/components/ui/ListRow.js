@@ -1,8 +1,8 @@
 // ListRow — row with leading icon, label/subtitle, and a trailing value,
 // chevron, or toggle switch.
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
-import { colors, spacing, typography } from '../../theme';
+import { spacing, typography, useTheme } from '../../theme';
 
 /**
  * ListRow
@@ -40,6 +40,8 @@ export default function ListRow({
   accessibilityLabel,
   ...rest
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const Container = onPress ? Pressable : View;
 
   // Compose an accessible label from the visible texts when none is supplied.
@@ -106,17 +108,25 @@ export default function ListRow({
   );
 }
 
-const styles = StyleSheet.create({
-  row: { paddingVertical: 12 },
-  divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.outlineVariant },
-  inner: { flexDirection: 'row', alignItems: 'center' },
-  icon: { marginRight: spacing.stackSm, minWidth: 28, alignItems: 'center' },
-  textCol: { flex: 1 },
-  label: { ...typography.bodyMd, color: colors.onSurface },
-  subtitle: { ...typography.labelSm, color: colors.onSurfaceVariant, marginTop: 2 },
-  trailRow: { flexDirection: 'row', alignItems: 'center' },
-  value: { ...typography.labelMd, color: colors.onSurfaceVariant },
-  chevron: { ...typography.headlineMd, color: colors.outline, marginLeft: 6 },
-  pressed: { opacity: 0.7 },
-  disabled: { opacity: 0.45 },
-});
+const makeStyles = (colors) =>
+  StyleSheet.create({
+    row: { paddingVertical: 12 },
+    divider: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.outlineVariant,
+    },
+    inner: { flexDirection: 'row', alignItems: 'center' },
+    icon: { marginRight: spacing.stackSm, minWidth: 28, alignItems: 'center' },
+    textCol: { flex: 1 },
+    label: { ...typography.bodyMd, color: colors.onSurface },
+    subtitle: {
+      ...typography.labelSm,
+      color: colors.onSurfaceVariant,
+      marginTop: 2,
+    },
+    trailRow: { flexDirection: 'row', alignItems: 'center' },
+    value: { ...typography.labelMd, color: colors.onSurfaceVariant },
+    chevron: { ...typography.headlineMd, color: colors.outline, marginLeft: 6 },
+    pressed: { opacity: 0.7 },
+    disabled: { opacity: 0.45 },
+  });

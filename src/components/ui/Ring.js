@@ -1,8 +1,8 @@
 // Ring — circular progress ring using react-native-svg.
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
-import { colors, typography } from '../../theme';
+import { typography, useTheme } from '../../theme';
 
 /**
  * Ring
@@ -20,14 +20,18 @@ export default function Ring({
   progress = 0,
   size = 96,
   strokeWidth = 10,
-  color = colors.primary,
-  trackColor = colors.outlineVariant,
+  color,
+  trackColor,
   children,
   label,
   style,
   contentStyle,
   ...rest
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const arcColor = color != null ? color : colors.primary;
+  const track = trackColor != null ? trackColor : colors.outlineVariant;
   const pct = Math.max(0, Math.min(1, progress));
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -41,7 +45,7 @@ export default function Ring({
           cx={center}
           cy={center}
           r={radius}
-          stroke={trackColor}
+          stroke={track}
           strokeWidth={strokeWidth}
           fill="none"
         />
@@ -49,7 +53,7 @@ export default function Ring({
           cx={center}
           cy={center}
           r={radius}
-          stroke={color}
+          stroke={arcColor}
           strokeWidth={strokeWidth}
           fill="none"
           strokeLinecap="round"
@@ -69,7 +73,8 @@ export default function Ring({
   );
 }
 
-const styles = StyleSheet.create({
-  center: { alignItems: 'center', justifyContent: 'center' },
-  label: { ...typography.headlineMd, color: colors.onSurface },
-});
+const makeStyles = (colors) =>
+  StyleSheet.create({
+    center: { alignItems: 'center', justifyContent: 'center' },
+    label: { ...typography.headlineMd, color: colors.onSurface },
+  });

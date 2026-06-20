@@ -1,5 +1,5 @@
 // SecondaryButton — outlined / tonal indigo button.
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { colors, radii, typography } from '../../theme';
+import { radii, typography, useTheme } from '../../theme';
 
 /**
  * SecondaryButton
@@ -36,6 +36,8 @@ export default function SecondaryButton({
   accessibilityLabel,
   ...rest
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const isDisabled = disabled || loading;
   const isTonal = variant === 'tonal';
   const a11yLabel =
@@ -77,29 +79,34 @@ export default function SecondaryButton({
   );
 }
 
-const styles = StyleSheet.create({
-  btn: {
-    borderRadius: radii.md,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  outline: {
-    backgroundColor: colors.transparent,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-  },
-  tonal: { backgroundColor: colors.infoBg },
-  fullWidth: { alignSelf: 'stretch' },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  icon: { marginRight: 8 },
-  label: {
-    ...typography.labelMd,
-    fontSize: 16,
-    color: colors.primary,
-  },
-  pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
-  disabled: { opacity: 0.5 },
-});
+const makeStyles = (colors) =>
+  StyleSheet.create({
+    btn: {
+      borderRadius: radii.md,
+      paddingVertical: 14,
+      paddingHorizontal: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 52,
+    },
+    outline: {
+      backgroundColor: colors.transparent,
+      borderWidth: 1.5,
+      borderColor: colors.primary,
+    },
+    tonal: { backgroundColor: colors.infoBg },
+    fullWidth: { alignSelf: 'stretch' },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    icon: { marginRight: 8 },
+    label: {
+      ...typography.labelMd,
+      fontSize: 16,
+      color: colors.primary,
+    },
+    pressed: { opacity: 0.85, transform: [{ scale: 0.98 }] },
+    disabled: { opacity: 0.5 },
+  });

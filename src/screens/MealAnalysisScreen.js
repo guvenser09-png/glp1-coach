@@ -37,7 +37,7 @@ import { scheduleDailyMotivation } from '../services/notificationService';
 import * as healthkitService from '../services/healthkitService';
 import { useGamification } from '../context/GamificationContext';
 import { useUnit } from '../context/UnitContext';
-import { colors, semantic, fontFamily, typography, spacing, radii, shadow } from '../theme';
+import { fontFamily, typography, spacing, radii, useTheme } from '../theme';
 import { Screen, Card, GradientHero, PrimaryButton, SecondaryButton, Chip, SectionTitle, Badge, Ring, ProgressBar } from '../components/ui';
 
 const FREE_DAILY_LIMIT = 2;
@@ -50,7 +50,7 @@ function getFatMuscleRatio(proteinRatio) {
   return { fatPct: 50, musclePct: 50 };
 }
 
-function getMuscleScoreLabel(score, isTr) {
+function getMuscleScoreLabel(score, isTr, colors) {
   if (score >= 85) {
     return {
       emoji: '💪',
@@ -91,7 +91,7 @@ function getMuscleScoreLabel(score, isTr) {
   };
 }
 
-function getReboundRiskContent(level, isTr) {
+function getReboundRiskContent(level, isTr, colors) {
   if (level === 'Low') {
     return {
       emoji: '🟢',
@@ -130,6 +130,8 @@ export default function MealAnalysisScreen({ navigation }) {
   const { t, language } = useLanguage();
   const { completeMission, earnXP } = useGamification();
   const { formatWeight } = useUnit();
+  const { colors, semantic, shadow } = useTheme();
+  const styles = React.useMemo(() => makeStyles(colors, semantic, shadow), [colors, semantic, shadow]);
   const isTr = language === 'tr';
 
   const [imageUri, setImageUri] = useState(null);
@@ -813,7 +815,7 @@ export default function MealAnalysisScreen({ navigation }) {
 
   // Muscle preservation score (heuristics) + factor breakdown
   const muscleScore = calculateMuscleScore(totalProtein, proteinTarget, exerciseDaysPerWeek);
-  const muscleScoreInfo = getMuscleScoreLabel(muscleScore, isTr);
+  const muscleScoreInfo = getMuscleScoreLabel(muscleScore, isTr, colors);
 
   // Sustainability / rebound risk
   const consecutiveLowProteinDays = (() => {
@@ -827,7 +829,7 @@ export default function MealAnalysisScreen({ navigation }) {
     return count;
   })();
   const riskData = calculateReboundRisk(weeklyLossPercent, todayProteinRatio, exerciseDaysPerWeek, consecutiveLowProteinDays);
-  const reboundInfo = getReboundRiskContent(riskData.level, isTr);
+  const reboundInfo = getReboundRiskContent(riskData.level, isTr, colors);
 
   // Body composition (use 7-day avg ratio if present, else today's)
   const { fatPct, musclePct } = getFatMuscleRatio(avgProteinRatio || todayProteinRatio);
@@ -1026,16 +1028,16 @@ export default function MealAnalysisScreen({ navigation }) {
                 <View style={[styles.muscleScoreBadge, {
                   backgroundColor:
                     result.muscleScore === 'A+' ? '#ECFDF5' :
-                    result.muscleScore === 'A'  ? '#D1FAE5' :
+                    result.muscleScore === 'A'  ? colors.successBg :
                     result.muscleScore === 'B'  ? colors.infoBg :
                     result.muscleScore === 'C'  ? colors.warningBg : colors.dangerBg,
                 }]}>
                   <Text style={[styles.muscleScoreText, {
                     color:
-                      result.muscleScore === 'A+' ? '#065F46' :
+                      result.muscleScore === 'A+' ? colors.success :
                       result.muscleScore === 'A'  ? '#047857' :
                       result.muscleScore === 'B'  ? colors.primaryDark :
-                      result.muscleScore === 'C'  ? '#92400E' : '#DC2626',
+                      result.muscleScore === 'C'  ? colors.warning : colors.danger,
                   }]}>
                     {result.muscleScore}
                   </Text>
@@ -1427,9 +1429,9 @@ export default function MealAnalysisScreen({ navigation }) {
             <View style={styles.fatMuscleRow}>
               <View style={[styles.fatMuscleCard, { backgroundColor: colors.successBg }]}>
                 <Text style={styles.fatMuscleIcon}>🟢</Text>
-                <Text style={[styles.fatMuscleValue, { color: '#065F46' }]}>{formatWeight(fatLostKg)}</Text>
-                <Text style={[styles.fatMuscleLabel, { color: '#059669' }]}>{isTr ? 'Yağ Kaybı' : 'Fat Lost'}</Text>
-                <Text style={[styles.fatMusclePct, { color: '#059669' }]}>%{fatPct}</Text>
+                <Text style={[styles.fatMuscleValue, { color: colors.success }]}>{formatWeight(fatLostKg)}</Text>
+                <Text style={[styles.fatMuscleLabel, { color: colors.success }]}>{isTr ? 'Yağ Kaybı' : 'Fat Lost'}</Text>
+                <Text style={[styles.fatMusclePct, { color: colors.success }]}>%{fatPct}</Text>
               </View>
               <View style={[styles.fatMuscleCard, { backgroundColor: muscleTonePalette.bg }]}>
                 <Text style={styles.fatMuscleIcon}>{muscleEmoji}</Text>
@@ -1492,19 +1494,19 @@ export default function MealAnalysisScreen({ navigation }) {
                     <View style={[styles.proj3BarMuscle, { flex: musclePct, backgroundColor: musclePct >= 30 ? colors.danger : colors.warning }]} />
                   </View>
                   <Text style={styles.proj3Fat}>🟢 {isTr ? 'Yağ baskın' : 'Fat dominant'}</Text>
-                  <Text style={[styles.proj3Muscle, { color: musclePct >= 30 ? '#DC2626' : '#D97706' }]}>
+                  <Text style={[styles.proj3Muscle, { color: musclePct >= 30 ? colors.danger : '#D97706' }]}>
                     {musclePct >= 30 ? '🚨' : '⚠️'} {isTr
                       ? `Kas riski ${musclePct >= 50 ? 'kritik' : 'yüksek'}`
                       : `Muscle risk ${musclePct >= 50 ? 'critical' : 'high'}`}
                   </Text>
-                  <Text style={[styles.proj3RiskRange, { color: musclePct >= 30 ? '#DC2626' : '#D97706' }]}>
+                  <Text style={[styles.proj3RiskRange, { color: musclePct >= 30 ? colors.danger : '#D97706' }]}>
                     %{musclePct >= 50 ? '40–50' : '25–35'} {isTr ? 'kas olabilir' : 'may be muscle'}
                   </Text>
                 </View>
 
                 {/* Path B — protein */}
-                <View style={[styles.proj3Col, { backgroundColor: '#F0FDF4' }]}>
-                  <Text style={[styles.proj3ColBadge, { color: '#065F46', backgroundColor: '#D1FAE5' }]}>
+                <View style={[styles.proj3Col, { backgroundColor: colors.successBg }]}>
+                  <Text style={[styles.proj3ColBadge, { color: colors.success, backgroundColor: colors.successBg }]}>
                     {isTr ? '+ Protein' : '+ Protein'}
                   </Text>
                   <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
@@ -1513,13 +1515,13 @@ export default function MealAnalysisScreen({ navigation }) {
                     <View style={[styles.proj3BarMuscle, { flex: 5, backgroundColor: colors.success }]} />
                   </View>
                   <Text style={styles.proj3Fat}>🟢 {isTr ? 'Yağ baskın' : 'Fat dominant'}</Text>
-                  <Text style={[styles.proj3Muscle, { color: '#059669' }]}>✅ {isTr ? 'Kas riski düşük' : 'Muscle risk low'}</Text>
-                  <Text style={[styles.proj3RiskRange, { color: '#059669' }]}>%5 {isTr ? 'kas olabilir' : 'may be muscle'}</Text>
+                  <Text style={[styles.proj3Muscle, { color: colors.success }]}>✅ {isTr ? 'Kas riski düşük' : 'Muscle risk low'}</Text>
+                  <Text style={[styles.proj3RiskRange, { color: colors.success }]}>%5 {isTr ? 'kas olabilir' : 'may be muscle'}</Text>
                 </View>
 
                 {/* Path C — protein + exercise */}
                 <View style={[styles.proj3Col, { backgroundColor: colors.infoBg, borderWidth: 1.5, borderColor: '#A5B4FC' }]}>
-                  <Text style={[styles.proj3ColBadge, { color: colors.primaryDark, backgroundColor: '#C7D2FE' }]}>
+                  <Text style={[styles.proj3ColBadge, { color: colors.primaryDark, backgroundColor: colors.outlineVariant }]}>
                     {isTr ? '+ Egzersiz' : '+ Exercise'}
                   </Text>
                   <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
@@ -1949,7 +1951,7 @@ export default function MealAnalysisScreen({ navigation }) {
                 {isTr ? 'Ne yediniz? Dilediğiniz gibi anlatın.' : 'What did you eat? Describe freely.'}
               </Text>
               <TextInput
-                style={[styles.input, { height: 80, textAlignVertical: 'top', paddingTop: 10 }]}
+                style={[styles.input, { minHeight: 80, textAlignVertical: 'top', paddingTop: 10 }]}
                 placeholder={isTr
                   ? 'örn. 2 haşlanmış yumurta ve 1 dilim tam tahıllı ekmek, yanında domates...'
                   : 'e.g. 2 boiled eggs and a slice of whole wheat bread, with tomatoes...'}
@@ -2058,7 +2060,7 @@ export default function MealAnalysisScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, semantic, shadow) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.containerMargin, paddingTop: spacing.gutter },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.stackLg },
@@ -2137,12 +2139,12 @@ const styles = StyleSheet.create({
     width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary,
     alignItems: 'center', justifyContent: 'center',
   },
-  sendBtnDisabled: { backgroundColor: '#C7D2FE' },
+  sendBtnDisabled: { backgroundColor: colors.outlineVariant },
   sendBtnText: { color: colors.white, fontSize: 18 },
 
   freeBanner: {
     backgroundColor: colors.infoBg, borderRadius: radii.md, padding: 10,
-    marginBottom: 14, borderWidth: 1, borderColor: '#C7D2FE',
+    marginBottom: 14, borderWidth: 1, borderColor: colors.outlineVariant,
     alignItems: 'center',
   },
   freeBannerText: { ...typography.labelSm, color: colors.primary, fontWeight: '700' },
@@ -2208,7 +2210,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.successBg, borderRadius: radii.md, padding: 10,
     borderLeftWidth: 3, borderLeftColor: colors.success, marginTop: 4,
   },
-  smartSwapTitle: { ...typography.labelSm, fontWeight: '700', color: '#065F46', marginBottom: 4 },
+  smartSwapTitle: { ...typography.labelSm, fontWeight: '700', color: colors.success, marginBottom: 4 },
   smartSwapText: { ...typography.labelMd, fontWeight: '400', fontFamily: fontFamily.body, color: colors.onSurfaceVariant, lineHeight: 18 },
 
   todayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.stackMd },
@@ -2303,14 +2305,14 @@ const styles = StyleSheet.create({
 
   autoNutrition: {
     backgroundColor: colors.infoBg, borderRadius: radii.md, padding: 14,
-    marginTop: 12, borderWidth: 1, borderColor: '#C7D2FE',
+    marginTop: 12, borderWidth: 1, borderColor: colors.outlineVariant,
   },
   autoNutritionTitle: { fontFamily: fontFamily.headingBold, fontSize: 12, fontWeight: '700', color: colors.primaryDark, marginBottom: 10 },
   autoNutritionRow: { flexDirection: 'row', alignItems: 'center' },
   autoNutritionItem: { flex: 1, alignItems: 'center' },
   autoNutritionValue: { fontFamily: fontFamily.headingBold, fontSize: 20, fontWeight: '800', color: colors.primary },
   autoNutritionLabel: { fontFamily: fontFamily.body, fontSize: 11, color: colors.onSurfaceVariant, marginTop: 2 },
-  autoNutritionDivider: { width: 1, height: 36, backgroundColor: '#C7D2FE' },
+  autoNutritionDivider: { width: 1, height: 36, backgroundColor: colors.outlineVariant },
   autoNutritionNote: { fontFamily: fontFamily.body, fontSize: 11, color: colors.onSurfaceVariant, marginTop: 8, textAlign: 'center' },
 
   exerciseBtn: {
@@ -2427,15 +2429,15 @@ const styles = StyleSheet.create({
   proj3Row: { flexDirection: 'row', gap: 8, marginBottom: 14 },
   proj3Col: { flex: 1, borderRadius: 12, padding: 10, alignItems: 'center' },
   proj3ColBadge: {
-    fontSize: 10, fontWeight: '800', fontFamily: fontFamily.bodySemiBold, color: '#92400E',
-    backgroundColor: '#FDE68A', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3,
+    fontSize: 10, fontWeight: '800', fontFamily: fontFamily.bodySemiBold, color: colors.warning,
+    backgroundColor: colors.warningBg, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3,
     marginBottom: 6, overflow: 'hidden',
   },
   proj3KgTotal: { fontSize: 18, fontFamily: fontFamily.headingBold, fontWeight: '800', color: colors.onSurface, marginBottom: 6 },
   proj3BarWrap: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', width: '100%', marginBottom: 8 },
   proj3BarFat: { backgroundColor: colors.success },
   proj3BarMuscle: {},
-  proj3Fat: { fontSize: 11, fontWeight: '600', color: '#059669', textAlign: 'center', fontFamily: fontFamily.bodySemiBold },
+  proj3Fat: { fontSize: 11, fontWeight: '600', color: colors.success, textAlign: 'center', fontFamily: fontFamily.bodySemiBold },
   proj3Muscle: { fontSize: 11, fontWeight: '700', textAlign: 'center', marginTop: 2, fontFamily: fontFamily.bodySemiBold },
   proj3RiskRange: { fontSize: 10, fontWeight: '500', textAlign: 'center', marginTop: 1, fontFamily: fontFamily.body },
   projDisclaimer: { marginTop: 10, fontSize: 11, color: colors.outline, lineHeight: 15, textAlign: 'center', fontStyle: 'italic', fontFamily: fontFamily.body },

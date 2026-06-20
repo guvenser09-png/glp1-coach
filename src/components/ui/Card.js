@@ -1,7 +1,7 @@
 // Card — white surface, radius 20, soft theme shadow.
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { colors, radii, shadow, spacing } from '../../theme';
+import { radii, spacing, useTheme } from '../../theme';
 
 /**
  * Card
@@ -23,6 +23,8 @@ export default function Card({
   accessibilityLabel,
   ...rest
 }) {
+  const { colors, shadow } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const cardStyle = [styles.card, shadow(elevation), { padding }, style];
 
   if (onPress) {
@@ -46,10 +48,11 @@ export default function Card({
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.card,
-  },
-  pressed: { opacity: 0.92, transform: [{ scale: 0.995 }] },
-});
+const makeStyles = (colors) =>
+  StyleSheet.create({
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: radii.card,
+    },
+    pressed: { opacity: 0.92, transform: [{ scale: 0.995 }] },
+  });

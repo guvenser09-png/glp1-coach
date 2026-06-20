@@ -1,7 +1,7 @@
 // SectionTitle — section heading with optional subtitle and trailing action.
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing, typography } from '../../theme';
+import { spacing, typography, useTheme } from '../../theme';
 
 /**
  * SectionTitle
@@ -22,6 +22,8 @@ export default function SectionTitle({
   contentStyle,
   ...rest
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   return (
     <View style={[styles.wrap, style]} {...rest}>
       <View style={styles.textCol}>
@@ -41,19 +43,20 @@ export default function SectionTitle({
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.stackSm,
-  },
-  textCol: { flexShrink: 1, paddingRight: spacing.stackSm },
-  title: { ...typography.headlineMd, color: colors.onSurface },
-  subtitle: {
-    ...typography.bodyMd,
-    color: colors.onSurfaceVariant,
-    marginTop: 2,
-  },
-  action: { ...typography.labelMd, color: colors.primary },
-});
+const makeStyles = (colors) =>
+  StyleSheet.create({
+    wrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: spacing.stackSm,
+    },
+    textCol: { flexShrink: 1, paddingRight: spacing.stackSm },
+    title: { ...typography.headlineMd, color: colors.onSurface },
+    subtitle: {
+      ...typography.bodyMd,
+      color: colors.onSurfaceVariant,
+      marginTop: 2,
+    },
+    action: { ...typography.labelMd, color: colors.primary },
+  });

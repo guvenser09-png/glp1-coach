@@ -1,7 +1,7 @@
 // Badge — small color-coded pill label.
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, radii, semantic, typography } from '../../theme';
+import { radii, typography, useTheme } from '../../theme';
 
 /**
  * Badge
@@ -22,6 +22,7 @@ export default function Badge({
   accessibilityRole,
   ...rest
 }) {
+  const { colors, semantic } = useTheme();
   const palette =
     tone === 'neutral'
       ? { fg: colors.onSurfaceVariant, bg: colors.outlineVariant }

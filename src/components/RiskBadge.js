@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useLanguage } from '../context/LanguageContext';
-import { colors, fontFamily } from '../theme';
+import { fontFamily, useTheme } from '../theme';
 
-const CONFIG = {
+const buildConfig = (colors) => ({
   Low: {
     bg: colors.successBg,
     text: colors.success,
@@ -22,7 +22,7 @@ const CONFIG = {
     dot: colors.danger,
     key: 'riskHigh',
   },
-};
+});
 
 /**
  * RiskBadge
@@ -32,6 +32,8 @@ const CONFIG = {
  */
 export default function RiskBadge({ level = 'Low' }) {
   const { t } = useLanguage();
+  const { colors } = useTheme();
+  const CONFIG = useMemo(() => buildConfig(colors), [colors]);
   const config = CONFIG[level] || CONFIG.Low;
 
   return (

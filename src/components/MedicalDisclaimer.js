@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useLanguage } from '../context/LanguageContext';
 import { useTheme } from '../theme';
@@ -43,7 +43,10 @@ export default function MedicalDisclaimer({
   const isTr = lang === 'tr';
   const a11yLabel = compact ? title : `${title}. ${body}`;
 
-  const styles = makeStyles({ colors, fontFamily, spacing, radii });
+  const styles = useMemo(
+    () => makeStyles({ colors, fontFamily, spacing, radii }),
+    [colors, fontFamily, spacing, radii]
+  );
 
   return (
     <View

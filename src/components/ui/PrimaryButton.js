@@ -1,5 +1,5 @@
 // PrimaryButton — filled indigo rounded button.
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { colors, radii, typography } from '../../theme';
+import { radii, typography, useTheme } from '../../theme';
 import { tap as hapticTap } from '../../utils/haptics';
 
 /**
@@ -35,6 +35,8 @@ export default function PrimaryButton({
   accessibilityLabel,
   ...rest
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const isDisabled = disabled || loading;
   // Auto-derive an accessible label from the title when caller doesn't supply one.
   const a11yLabel =
@@ -80,24 +82,29 @@ export default function PrimaryButton({
   );
 }
 
-const styles = StyleSheet.create({
-  btn: {
-    backgroundColor: colors.primary,
-    borderRadius: radii.md,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  fullWidth: { alignSelf: 'stretch' },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  icon: { marginRight: 8 },
-  label: {
-    ...typography.labelMd,
-    fontSize: 16,
-    color: colors.onPrimary,
-  },
-  pressed: { opacity: 0.9, transform: [{ scale: 0.98 }] },
-  disabled: { opacity: 0.5 },
-});
+const makeStyles = (colors) =>
+  StyleSheet.create({
+    btn: {
+      backgroundColor: colors.primary,
+      borderRadius: radii.md,
+      paddingVertical: 14,
+      paddingHorizontal: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 52,
+    },
+    fullWidth: { alignSelf: 'stretch' },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    icon: { marginRight: 8 },
+    label: {
+      ...typography.labelMd,
+      fontSize: 16,
+      color: colors.onPrimary,
+    },
+    pressed: { opacity: 0.9, transform: [{ scale: 0.98 }] },
+    disabled: { opacity: 0.5 },
+  });

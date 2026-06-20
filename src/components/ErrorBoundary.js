@@ -12,7 +12,8 @@ import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import * as Localization from 'expo-localization';
 
-import { colors, typography, spacing, radii, fontFamily, shadow } from '../theme';
+import { getTheme, typography, spacing, radii, fontFamily } from '../theme';
+import { captureError } from '../services/sentry';
 
 // Detect the device language once, defensively (never let detection itself throw).
 function detectIsTr() {
@@ -38,9 +39,15 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    // No crash-reporting backend yet (report D2); log so the error is at least
-    // visible in dev tooling / device logs instead of silently swallowed.
+    // Log so the error is at least visible in dev tooling / device logs.
     console.error('ErrorBoundary caught a render error:', error, info?.componentStack);
+    // Report to Sentry (report D2). Fully guarded — a missing or failing Sentry
+    // must never break the boundary. / Sentry eksik/başarısız olsa bile sınır bozulmamalı.
+    try {
+      captureError(error, info);
+    } catch (e) {
+      // ignore — reporting is best-effort
+    }
   }
 
   handleReset() {
@@ -52,6 +59,12 @@ export default class ErrorBoundary extends React.Component {
     if (!this.state.hasError) {
       return this.props.children;
     }
+
+    // Resolve colors/shadow for the current device scheme at render time. This
+    // is a class component (no hooks), so we read the scheme imperatively; the
+    // fallback only renders on error, so it reflects the scheme at that moment.
+    const { colors, shadow } = getTheme();
+    const styles = makeStyles(colors, shadow);
 
     const isTr = detectIsTr();
     const title = isTr ? 'Bir şeyler ters gitti' : 'Something went wrong';
@@ -92,7 +105,8 @@ export default class ErrorBoundary extends React.Component {
   }
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, shadow) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -145,4 +159,4 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.bodyBold,
     color: colors.onPrimary,
   },
-});
+  });

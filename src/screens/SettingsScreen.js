@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -38,7 +38,7 @@ import {
   cancelInjectionReminders,
 } from '../services/notificationService';
 import { Card, ListRow, SectionTitle, Chip, Badge, PrimaryButton, SecondaryButton } from '../components/ui';
-import { colors, semantic, spacing, radii, typography, fontFamily, shadow } from '../theme';
+import { spacing, radii, typography, fontFamily, useTheme } from '../theme';
 
 // Support / legal contact. Centralised here so legal copy and the support row
 // stay in sync. (No shared app-wide constants module exists yet.)
@@ -51,6 +51,8 @@ export default function SettingsScreen({ navigation }) {
           toDisplayWeight, toDisplayHeight, parseWeightToKg, parseHeightToCm,
           weightUnit, heightUnit, weightRange, heightRange } = useUnit();
   const { isPremium, isLoaded, subscriptionPlan, manageSubscription } = useSubscription();
+  const { colors, semantic, shadow } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, semantic, shadow), [colors, semantic, shadow]);
 
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -1008,7 +1010,8 @@ export default function SettingsScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, semantic, shadow) =>
+  StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.containerMargin, paddingTop: spacing.gutter },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -1153,4 +1156,4 @@ const styles = StyleSheet.create({
   modalCloseText: { fontSize: 18, color: colors.onSurfaceVariant, fontFamily: fontFamily.bodySemiBold },
   modalContent: { padding: spacing.containerMargin },
   modalBody: { ...typography.bodyMd, color: colors.onSurfaceVariant, lineHeight: 22 },
-});
+  });

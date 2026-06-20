@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Linking,
 } from 'react-native';
-import { colors, fontFamily } from '../theme';
+import { fontFamily, useTheme } from '../theme';
 
 export default function AIConsentModal({ visible, onAccept, onDecline, language }) {
   const isTr = language === 'tr';
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
     <Modal visible={visible} transparent animationType="slide">
@@ -99,7 +101,8 @@ export default function AIConsentModal({ visible, onAccept, onDecline, language 
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   overlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
@@ -126,4 +129,4 @@ const styles = StyleSheet.create({
   acceptText: { color: colors.white, fontSize: 16, fontWeight: '700', fontFamily: fontFamily.bodySemiBold },
   declineBtn: { alignItems: 'center', padding: 10 },
   declineText: { color: colors.outline, fontSize: 15, fontWeight: '500', fontFamily: fontFamily.bodyMedium },
-});
+  });

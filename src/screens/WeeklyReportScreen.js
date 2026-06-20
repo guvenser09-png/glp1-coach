@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -16,7 +16,7 @@ import { getWeightLogs, getMealLogs, getUserProfile } from '../services/firestor
 import { getMedicationProfile } from '../services/medicationService';
 import { detectRebound } from '../utils/heuristics';
 
-import { colors, semantic, typography, spacing, radii, shadow } from '../theme';
+import { typography, spacing, radii, useTheme } from '../theme';
 import {
   Screen,
   Card,
@@ -50,6 +50,8 @@ export default function WeeklyReportScreen({ navigation }) {
   const { t, language } = useLanguage();
   const { formatWeight } = useUnit();
   const isTr = language === 'tr';
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [loading, setLoading] = useState(true);
   const [proteinTarget, setProteinTarget] = useState(120);
@@ -774,7 +776,8 @@ export default function WeeklyReportScreen({ navigation }) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   content: { padding: spacing.containerMargin, paddingTop: spacing.gutter },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
@@ -1058,4 +1061,4 @@ const styles = StyleSheet.create({
   emptyEmoji: { fontSize: 56, marginBottom: spacing.stackMd },
   emptyTitle: { ...typography.headlineMd, color: colors.onSurface, marginBottom: spacing.stackSm, textAlign: 'center' },
   emptyDesc: { ...typography.bodyMd, color: colors.onSurfaceVariant, textAlign: 'center', lineHeight: 22, marginBottom: spacing.stackLg },
-});
+  });

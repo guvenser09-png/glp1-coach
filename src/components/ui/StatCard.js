@@ -1,7 +1,7 @@
 // StatCard — white card showing a big stat value with label + optional delta.
-import React from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, semantic, typography } from '../../theme';
+import { typography, useTheme } from '../../theme';
 import Card from './Card';
 
 /**
@@ -28,6 +28,8 @@ export default function StatCard({
   contentStyle,
   ...rest
 }) {
+  const { colors, semantic } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const tone = semantic[deltaTone] || semantic.success;
   // Compose a single VoiceOver label so the value+unit+label+delta are read as
   // one element instead of 4 separate fragments. e.g. "Weight, 82.4 kg, -1.2".
@@ -59,28 +61,34 @@ export default function StatCard({
   );
 }
 
-const styles = StyleSheet.create({
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  label: { ...typography.labelMd, color: colors.onSurfaceVariant },
-  icon: { marginLeft: 8 },
-  valueRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: 6 },
-  value: { ...typography.displayStat, color: colors.onSurface, fontSize: 36, lineHeight: 42 },
-  unit: {
-    ...typography.bodyMd,
-    color: colors.onSurfaceVariant,
-    marginLeft: 4,
-    marginBottom: 6,
-  },
-  deltaPill: {
-    alignSelf: 'flex-start',
-    marginTop: 10,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-  },
-  deltaText: { ...typography.labelSm },
-});
+const makeStyles = (colors) =>
+  StyleSheet.create({
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    label: { ...typography.labelMd, color: colors.onSurfaceVariant },
+    icon: { marginLeft: 8 },
+    valueRow: { flexDirection: 'row', alignItems: 'flex-end', marginTop: 6 },
+    value: {
+      ...typography.displayStat,
+      color: colors.onSurface,
+      fontSize: 36,
+      lineHeight: 42,
+    },
+    unit: {
+      ...typography.bodyMd,
+      color: colors.onSurfaceVariant,
+      marginLeft: 4,
+      marginBottom: 6,
+    },
+    deltaPill: {
+      alignSelf: 'flex-start',
+      marginTop: 10,
+      paddingVertical: 4,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+    },
+    deltaText: { ...typography.labelSm },
+  });

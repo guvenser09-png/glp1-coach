@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -21,7 +21,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { getUserProfile } from '../services/firestoreService';
 import { callAIChat, isAIConfigured } from '../services/aiClient';
-import { colors, fontFamily, radii, shadow, spacing, typography } from '../theme';
+import { fontFamily, radii, spacing, typography, useTheme } from '../theme';
 import { Chip } from '../components/ui';
 
 // ── Meal database (no pork) ──────────────────────────────────────────────────
@@ -1251,6 +1251,8 @@ export default function DietPlansScreen({ navigation }) {
   const { user } = useAuth();
   const { t, language } = useLanguage();
   const isTr = language === 'tr';
+  const { colors, shadow } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, shadow), [colors, shadow]);
 
   const [activeDay, setActiveDay] = useState(0);
   const [proteinTarget, setProteinTarget] = useState(120);
@@ -1803,7 +1805,8 @@ export default function DietPlansScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, shadow) =>
+  StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   header: {
@@ -2082,4 +2085,4 @@ const styles = StyleSheet.create({
   nutritionValue: { fontSize: 26, fontFamily: fontFamily.headingExtraBold, fontWeight: '800' },
   nutritionLabel: { fontSize: 12, fontFamily: fontFamily.body, color: colors.onSurfaceVariant, marginTop: 2 },
   nutritionDivider: { width: 1, backgroundColor: colors.outlineVariant, marginHorizontal: 16 },
-});
+  });

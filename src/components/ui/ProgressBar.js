@@ -1,7 +1,7 @@
 // ProgressBar — filled or segmented horizontal progress bar.
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { colors, radii } from '../../theme';
+import { radii, useTheme } from '../../theme';
 
 /**
  * ProgressBar
@@ -16,8 +16,8 @@ import { colors, radii } from '../../theme';
  */
 export default function ProgressBar({
   progress = 0,
-  color = colors.primary,
-  trackColor = colors.outlineVariant,
+  color,
+  trackColor,
   height = 8,
   segments = 0,
   filledSegments = 0,
@@ -25,6 +25,9 @@ export default function ProgressBar({
   contentStyle,
   ...rest
 }) {
+  const { colors } = useTheme();
+  const fillColor = color != null ? color : colors.primary;
+  const track = trackColor != null ? trackColor : colors.outlineVariant;
   if (segments > 0) {
     return (
       <View style={[styles.segRow, style]} {...rest}>
@@ -36,7 +39,7 @@ export default function ProgressBar({
               {
                 height,
                 borderRadius: height / 2,
-                backgroundColor: i < filledSegments ? color : trackColor,
+                backgroundColor: i < filledSegments ? fillColor : track,
                 marginLeft: i === 0 ? 0 : 4,
               },
               contentStyle,
@@ -52,7 +55,7 @@ export default function ProgressBar({
     <View
       style={[
         styles.track,
-        { height, borderRadius: height / 2, backgroundColor: trackColor },
+        { height, borderRadius: height / 2, backgroundColor: track },
         style,
       ]}
       {...rest}
@@ -64,7 +67,7 @@ export default function ProgressBar({
             width: `${pct * 100}%`,
             height,
             borderRadius: height / 2,
-            backgroundColor: color,
+            backgroundColor: fillColor,
           },
           contentStyle,
         ]}

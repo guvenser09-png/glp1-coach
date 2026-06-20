@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,13 @@ import {
   Modal,
   Dimensions,
 } from 'react-native';
-import { colors, fontFamily, shadow } from '../theme';
+import { fontFamily, useTheme } from '../theme';
 
 const { width } = Dimensions.get('window');
 
-const STEPS_EN = [
+// Step accents: the first step uses the scheme-aware brand primary (passed in
+// at build time); the rest are fixed brand-accent hues by design.
+const buildStepsEn = (colors) => [
   {
     emoji: '⚖️',
     title: 'Log Your Weight',
@@ -38,7 +40,7 @@ const STEPS_EN = [
   },
 ];
 
-const STEPS_TR = [
+const buildStepsTr = (colors) => [
   {
     emoji: '⚖️',
     title: 'Kilonu Gir',
@@ -68,7 +70,12 @@ const STEPS_TR = [
 export default function FeatureTour({ visible, onFinish, language }) {
   const [step, setStep] = useState(0);
   const isTr = language === 'tr';
-  const steps = isTr ? STEPS_TR : STEPS_EN;
+  const { colors, shadow } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, shadow), [colors, shadow]);
+  const steps = useMemo(
+    () => (isTr ? buildStepsTr(colors) : buildStepsEn(colors)),
+    [isTr, colors]
+  );
   const current = steps[step];
 
   function handleNext() {
@@ -150,7 +157,8 @@ export default function FeatureTour({ visible, onFinish, language }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, shadow) =>
+  StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -193,4 +201,4 @@ const styles = StyleSheet.create({
   nextBtnText: { color: colors.white, fontSize: 16, fontWeight: '700', fontFamily: fontFamily.bodySemiBold },
   skipBtn: { padding: 8 },
   skipText: { color: colors.outline, fontSize: 14, fontWeight: '500', fontFamily: fontFamily.bodyMedium },
-});
+  });

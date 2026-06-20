@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, fontFamily } from '../theme';
+import { fontFamily, useTheme } from '../theme';
 
 const SIZE = 80;
 const STROKE = 8;
@@ -16,7 +16,11 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
  *  color  {string}  accent colour for the progress arc and text
  *  icon   {string}  emoji icon shown inside the circle
  */
-export default function ScoreCard({ score = 0, label = '', color = colors.primary, icon = '💪' }) {
+export default function ScoreCard({ score = 0, label = '', color, icon = '💪' }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  // Default accent resolves from the scheme-aware palette when no color is passed.
+  const accent = color || colors.primary;
   const clampedScore = Math.max(0, Math.min(100, score));
 
   // We build the circular progress using border trick (pure View, no SVG needed)
@@ -43,7 +47,7 @@ export default function ScoreCard({ score = 0, label = '', color = colors.primar
                 styles.halfCircle,
                 styles.leftHalfCircle,
                 {
-                  borderColor: clampedScore > 0 ? color : 'transparent',
+                  borderColor: clampedScore > 0 ? accent : 'transparent',
                   transform: [
                     {
                       rotate:
@@ -64,7 +68,7 @@ export default function ScoreCard({ score = 0, label = '', color = colors.primar
                 styles.halfCircle,
                 styles.rightHalfCircle,
                 {
-                  borderColor: clampedScore > 50 ? color : 'transparent',
+                  borderColor: clampedScore > 50 ? accent : 'transparent',
                   transform: [
                     {
                       rotate:
@@ -82,7 +86,7 @@ export default function ScoreCard({ score = 0, label = '', color = colors.primar
         {/* Inner content */}
         <View style={styles.innerCircle}>
           <Text style={styles.icon}>{icon}</Text>
-          <Text style={[styles.scoreText, { color }]}>{clampedScore}</Text>
+          <Text style={[styles.scoreText, { color: accent }]}>{clampedScore}</Text>
         </View>
       </View>
 
@@ -94,7 +98,8 @@ export default function ScoreCard({ score = 0, label = '', color = colors.primar
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderRadius: 16,
@@ -188,4 +193,4 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     fontFamily: fontFamily.bodyMedium,
   },
-});
+  });

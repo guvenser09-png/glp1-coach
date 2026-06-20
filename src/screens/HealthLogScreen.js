@@ -4,7 +4,7 @@
 //      action and a trend list (latest value + delta vs first reading).
 //   B) Symptoms / side effects: quick-log chips + mild/moderate/severe selector,
 //      a log action, and a recent-symptoms list with localized dates.
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -30,7 +30,7 @@ import {
   getSymptoms,
 } from '../services/healthLogService';
 
-import { colors, typography, spacing, radii, fontFamily } from '../theme';
+import { typography, spacing, radii, fontFamily, useTheme } from '../theme';
 import {
   Screen,
   Card,
@@ -93,6 +93,8 @@ export default function HealthLogScreen({ navigation }) {
   const { user } = useAuth();
   const { language } = useLanguage();
   const isTr = language === 'tr';
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [loading, setLoading] = useState(true);
   const [savingMeasurement, setSavingMeasurement] = useState(false);
@@ -522,7 +524,8 @@ export default function HealthLogScreen({ navigation }) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const makeStyles = (colors) =>
+  StyleSheet.create({
   flex: { flex: 1 },
   content: { padding: spacing.containerMargin, paddingTop: spacing.gutter },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -624,4 +627,4 @@ const styles = StyleSheet.create({
     marginTop: spacing.stackLg,
     paddingHorizontal: spacing.stackSm,
   },
-});
+  });

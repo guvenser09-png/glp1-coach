@@ -2,7 +2,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, radii, shadow, spacing } from '../../theme';
+import { radii, spacing, useTheme } from '../../theme';
 
 /**
  * GradientHero
@@ -22,6 +22,7 @@ export default function GradientHero({
   contentStyle,
   ...rest
 }) {
+  const { colors, shadow } = useTheme();
   return (
     <View style={[shadowed && shadow('md'), { borderRadius }, style]} {...rest}>
       <LinearGradient
