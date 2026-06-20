@@ -18,6 +18,8 @@ export default function Badge({
   children,
   style,
   contentStyle,
+  accessibilityLabel,
+  accessibilityRole,
   ...rest
 }) {
   const palette =
@@ -25,8 +27,21 @@ export default function Badge({
       ? { fg: colors.onSurfaceVariant, bg: colors.outlineVariant }
       : semantic[tone] || semantic.info;
 
+  const a11yLabel =
+    accessibilityLabel != null
+      ? accessibilityLabel
+      : typeof label === 'string'
+      ? label
+      : undefined;
+
   return (
-    <View style={[styles.badge, { backgroundColor: palette.bg }, style]} {...rest}>
+    <View
+      accessible={a11yLabel != null ? true : undefined}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={a11yLabel}
+      style={[styles.badge, { backgroundColor: palette.bg }, style]}
+      {...rest}
+    >
       {icon ? <View style={styles.icon}>{icon}</View> : null}
       {label != null ? (
         <Text style={[styles.text, { color: palette.fg }, contentStyle]}>

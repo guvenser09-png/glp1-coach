@@ -27,6 +27,13 @@ import { SubscriptionProvider } from './src/context/SubscriptionContext';
 import { GamificationProvider } from './src/context/GamificationContext';
 import { UnitProvider } from './src/context/UnitContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import ErrorBoundary from './src/components/ErrorBoundary';
+import { colors } from './src/theme';
+
+// Max time (ms) to wait on the font gate before rendering anyway. Fail-open: if a
+// font is slow or stalls, the app still renders (text falls back to the system
+// font) instead of hanging forever on the loading spinner (report F4).
+const FONT_GATE_TIMEOUT_MS = 4000;
 
 export default function App() {
   const [jakartaLoaded, jakartaError] = usePlusJakartaSans({
@@ -43,12 +50,11 @@ export default function App() {
     Inter_700Bold,
   });
 
-  // Fail-open: if a font errors OR is slow, still render (text falls back to the
-  // system font) instead of hanging forever on the loading spinner. A 4s timeout
-  // guarantees the app never gets stuck on the font gate.
+  // Fail-open font gate: if a font errors OR is slow, still render (text falls
+  // back to the system font) instead of hanging forever (see FONT_GATE_TIMEOUT_MS).
   const [fontTimeout, setFontTimeout] = React.useState(false);
   React.useEffect(() => {
-    const id = setTimeout(() => setFontTimeout(true), 4000);
+    const id = setTimeout(() => setFontTimeout(true), FONT_GATE_TIMEOUT_MS);
     return () => clearTimeout(id);
   }, []);
 
@@ -58,26 +64,28 @@ export default function App() {
   if (!fontsReady && !fontTimeout) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#4F46E5" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <LanguageProvider>
-          <SubscriptionProvider>
-            <GamificationProvider>
-              <UnitProvider>
-                <StatusBar style="dark" backgroundColor="#F9FAFB" />
-                <AppNavigator />
-              </UnitProvider>
-            </GamificationProvider>
-          </SubscriptionProvider>
-        </LanguageProvider>
-      </AuthProvider>
-    </SafeAreaProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <LanguageProvider>
+            <SubscriptionProvider>
+              <GamificationProvider>
+                <UnitProvider>
+                  <StatusBar style="auto" />
+                  <AppNavigator />
+                </UnitProvider>
+              </GamificationProvider>
+            </SubscriptionProvider>
+          </LanguageProvider>
+        </AuthProvider>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -86,6 +94,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F7F9FB',
+    backgroundColor: colors.background,
   },
 });

@@ -5,19 +5,22 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  FlatList,
   TouchableOpacity,
   Modal,
   TextInput,
   Linking,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   SafeAreaView as RNSafeAreaView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { getUserProfile } from '../services/firestoreService';
-import { OPENAI_API_KEY } from '../config';
+import { callAIChat, isAIConfigured } from '../services/aiClient';
 import { colors, fontFamily, radii, shadow, spacing, typography } from '../theme';
 import { Chip } from '../components/ui';
 
@@ -1299,36 +1302,84 @@ export default function DietPlansScreen({ navigation }) {
     return matching[dayIndex % matching.length];
   }
 
+  // OFFLINE fallback (report A1): when the AI proxy is not configured or the
+  // request fails, build a 4-meal plan from the LOCAL meal database, preferring
+  // entries that actually contain the user's ingredients. This is real, curated
+  // data — never fabricated "AI" content.
+  function buildOfflineMeals() {
+    const pick = (arr) => {
+      const matching = arr.filter(mealMatchesIngredients);
+      const source = matching.length > 0 ? matching : arr;
+      return source[(activeDay + planVariant) % source.length];
+    };
+    return [
+      { type: 'breakfast', ...pick(BREAKFASTS) },
+      { type: 'lunch', ...pick(LUNCHES) },
+      { type: 'dinner', ...pick(DINNERS) },
+      { type: 'snack', ...pick(SNACKS) },
+    ].map((m) => ({
+      type: m.type,
+      name: isTr ? m.tr : m.en,
+      protein: m.protein,
+      calories: m.calories,
+      prepTime: m.prepTime,
+      ingredients: isTr ? m.ingredients.tr : m.ingredients.en,
+      steps: isTr ? m.steps.tr : m.steps.en,
+    }));
+  }
+
   async function generateAIRecipes() {
     if (!ingredientInput.trim()) return;
     setAiLoading(true);
     setAiMeals(null);
-    try {
-      const prompt = isTr
-        ? `Elimdeki malzemeler: ${ingredientInput}.\n\nBu malzemeleri kullanarak kas kütlesini korumaya çalışan, protein takibi yapan biri için yüksek proteinli 4 tarif öner (1 kahvaltı, 1 öğle, 1 akşam, 1 atıştırmalık). Her tarif için şu JSON yapısını kullan. Cevabı SADECE JSON olarak ver, başka açıklama yapma:\n{"meals": [{"type":"breakfast","name":"...","protein":0,"calories":0,"prepTime":"10 dk","ingredients":["..."],"steps":["..."]},{"type":"lunch",...},{"type":"dinner",...},{"type":"snack",...}]}`
-        : `My available ingredients: ${ingredientInput}.\n\nSuggest 4 high-protein recipes (1 breakfast, 1 lunch, 1 dinner, 1 snack) for someone focused on muscle preservation and protein tracking. Use ONLY this JSON format, no extra text:\n{"meals": [{"type":"breakfast","name":"...","protein":0,"calories":0,"prepTime":"10 min","ingredients":["..."],"steps":["..."]},{"type":"lunch",...},{"type":"dinner",...},{"type":"snack",...}]}`;
 
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${OPENAI_API_KEY}` },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: prompt }],
-          response_format: { type: 'json_object' },
-          max_tokens: 1200,
-        }),
+    // No proxy configured → go straight to the curated offline plan.
+    if (!isAIConfigured()) {
+      setAiMeals(buildOfflineMeals());
+      setAiLoading(false);
+      Alert.alert(
+        isTr ? 'Çevrimdışı Mod' : 'Offline Mode',
+        isTr
+          ? 'AI servisi şu an kullanılamıyor. Malzemelerine göre kayıtlı tariflerden bir plan hazırlandı.'
+          : 'The AI service is unavailable right now. We built a plan from our saved recipes matching your ingredients.'
+      );
+      return;
+    }
+
+    try {
+      // Sanitize user text (report C5: prompt-injection) — strip control chars,
+      // collapse whitespace, and cap length before embedding in the prompt.
+      const safeIngredients = ingredientInput
+        .replace(/[ -]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 300);
+
+      const prompt = isTr
+        ? `Elimdeki malzemeler: ${safeIngredients}.\n\nBu malzemeleri kullanarak kas kütlesini korumaya çalışan, protein takibi yapan biri için yüksek proteinli 4 tarif öner (1 kahvaltı, 1 öğle, 1 akşam, 1 atıştırmalık). Her tarif için şu JSON yapısını kullan. Cevabı SADECE JSON olarak ver, başka açıklama yapma:\n{"meals": [{"type":"breakfast","name":"...","protein":0,"calories":0,"prepTime":"10 dk","ingredients":["..."],"steps":["..."]},{"type":"lunch",...},{"type":"dinner",...},{"type":"snack",...}]}`
+        : `My available ingredients: ${safeIngredients}.\n\nSuggest 4 high-protein recipes (1 breakfast, 1 lunch, 1 dinner, 1 snack) for someone focused on muscle preservation and protein tracking. Use ONLY this JSON format, no extra text:\n{"meals": [{"type":"breakfast","name":"...","protein":0,"calories":0,"prepTime":"10 min","ingredients":["..."],"steps":["..."]},{"type":"lunch",...},{"type":"dinner",...},{"type":"snack",...}]}`;
+
+      // Route through the AI proxy (report A1). The OpenAI key lives server-side;
+      // this never touches a client-side credential.
+      const raw = await callAIChat({
+        messages: [{ role: 'user', content: prompt }],
+        responseFormat: { type: 'json_object' },
+        maxTokens: 1200,
       });
-      const data = await res.json();
-      const raw = data.choices?.[0]?.message?.content;
       if (!raw) throw new Error('No response');
       const parsed = JSON.parse(raw);
       const meals = parsed.meals || parsed;
       if (!Array.isArray(meals) || meals.length === 0) throw new Error('Invalid format');
       setAiMeals(meals);
     } catch (e) {
+      // Graceful fallback: on any AI failure (proxy unavailable / network /
+      // bad shape) fall back to the curated local plan instead of an error wall.
+      setAiMeals(buildOfflineMeals());
       Alert.alert(
-        isTr ? 'AI Hatası' : 'AI Error',
-        isTr ? 'Tarif oluşturulamadı. Tekrar deneyin.' : 'Could not generate recipes. Please try again.'
+        isTr ? 'Çevrimdışı Mod' : 'Offline Mode',
+        isTr
+          ? 'AI tarifleri alınamadı. Malzemelerine göre kayıtlı tariflerden bir plan gösteriliyor.'
+          : 'Could not reach AI recipes. Showing a plan from our saved recipes matching your ingredients.'
       );
     } finally {
       setAiLoading(false);
@@ -1395,6 +1446,12 @@ export default function DietPlansScreen({ navigation }) {
         style={styles.mealCard}
         onPress={() => openMealModal(mealKey, meal, isAI)}
         activeOpacity={0.85}
+        accessibilityRole="button"
+        accessibilityLabel={
+          isTr
+            ? `${labels[mealKey]}: ${mealName}, ${meal.protein} gram protein, ${meal.calories} kalori. Tarif için dokun`
+            : `${labels[mealKey]}: ${mealName}, ${meal.protein} grams protein, ${meal.calories} calories. Tap for recipe`
+        }
       >
         <View style={styles.mealHeader}>
           <Text style={styles.mealEmoji}>{emojis[mealKey]}</Text>
@@ -1424,8 +1481,67 @@ export default function DietPlansScreen({ navigation }) {
     );
   }
 
+  // Build the ordered meal list once so it can drive a virtualized FlatList
+  // (report P2: no list virtualization). Each entry resolves to AI data when
+  // available, otherwise the curated static plan.
+  const MEAL_ORDER = ['breakfast', 'lunch', 'dinner', 'snack'];
+  const mealList = MEAL_ORDER.map((type) => {
+    if (aiMeals) {
+      const aiMeal =
+        aiMeals.find((m) => m.type === type) || aiMeals[MEAL_ORDER.indexOf(type)];
+      if (aiMeal) return { key: type, type, meal: aiMeal, isAI: true };
+    }
+    return { key: type, type, meal: dayMeals[type], isAI: false };
+  });
+
+  const ListHeader = (
+    <>
+      {/* Daily Total Banner */}
+      <View style={styles.dailyTotalBanner}>
+        <View style={styles.dailyTotalItem}>
+          <Text style={styles.dailyTotalValue}>{dailyProtein}g</Text>
+          <Text style={styles.dailyTotalLabel}>{t('protein')}</Text>
+        </View>
+        <View style={styles.dailyTotalDivider} />
+        <View style={styles.dailyTotalItem}>
+          <Text style={styles.dailyTotalValue}>{dailyCalories}</Text>
+          <Text style={styles.dailyTotalLabel}>{t('calories')}</Text>
+        </View>
+        <View style={styles.dailyTotalDivider} />
+        <View style={styles.dailyTotalItem}>
+          <Text style={[styles.dailyTotalValue, { color: dailyProtein >= proteinTarget ? colors.success : colors.warning }]}>
+            {Math.round((dailyProtein / proteinTarget) * 100)}%
+          </Text>
+          <Text style={styles.dailyTotalLabel}>{isTr ? 'Hedef' : 'Goal'}</Text>
+        </View>
+      </View>
+
+      {/* Protein bar */}
+      <View style={styles.proteinBarContainer}>
+        <View style={styles.proteinBarTrack}>
+          <View
+            style={[
+              styles.proteinBarFill,
+              {
+                width: `${Math.min((dailyProtein / proteinTarget) * 100, 100)}%`,
+                backgroundColor: dailyProtein >= proteinTarget ? colors.success : colors.primary,
+              },
+            ]}
+          />
+        </View>
+        <Text style={styles.proteinBarLabel}>
+          {dailyProtein}g / {proteinTarget}g {t('protein')}
+        </Text>
+      </View>
+    </>
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.heading}>{t('dietPlans')}</Text>
@@ -1450,6 +1566,8 @@ export default function DietPlansScreen({ navigation }) {
               style={styles.filterBtn}
               onPress={() => { setFilterMode(false); setIngredientInput(''); setAiMeals(null); }}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel={isTr ? 'Malzemeleri temizle' : 'Clear ingredients'}
             >
               <Text style={styles.filterBtnText}>✕</Text>
             </TouchableOpacity>
@@ -1461,6 +1579,11 @@ export default function DietPlansScreen({ navigation }) {
             onPress={generateAIRecipes}
             disabled={aiLoading}
             activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: aiLoading, busy: aiLoading }}
+            accessibilityLabel={
+              isTr ? 'AI ile kişisel tarif oluştur' : 'Generate AI recipes for me'
+            }
           >
             {aiLoading
               ? <ActivityIndicator color={colors.white} size="small" />
@@ -1502,6 +1625,9 @@ export default function DietPlansScreen({ navigation }) {
               style={[styles.planVariantBtn, planVariant === v && styles.planVariantBtnActive]}
               onPress={() => setPlanVariant(v)}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ selected: planVariant === v }}
+              accessibilityLabel={isTr ? `Plan ${v + 1}` : `Plan ${v + 1}`}
             >
               <Text style={[styles.planVariantBtnText, planVariant === v && styles.planVariantBtnTextActive]}>
                 {v + 1}
@@ -1514,64 +1640,17 @@ export default function DietPlansScreen({ navigation }) {
         </View>
       )}
 
-      <ScrollView
+      {/* Meal Cards — virtualized list (AI or curated static plan) */}
+      <FlatList
+        data={mealList}
+        keyExtractor={(item) => item.key}
+        renderItem={({ item }) => renderMealCard(item.type, item.meal, item.isAI)}
+        ListHeaderComponent={ListHeader}
+        ListFooterComponent={<View style={{ height: 32 }} />}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-      >
-        {/* Daily Total Banner */}
-        <View style={styles.dailyTotalBanner}>
-          <View style={styles.dailyTotalItem}>
-            <Text style={styles.dailyTotalValue}>{dailyProtein}g</Text>
-            <Text style={styles.dailyTotalLabel}>{t('protein')}</Text>
-          </View>
-          <View style={styles.dailyTotalDivider} />
-          <View style={styles.dailyTotalItem}>
-            <Text style={styles.dailyTotalValue}>{dailyCalories}</Text>
-            <Text style={styles.dailyTotalLabel}>{t('calories')}</Text>
-          </View>
-          <View style={styles.dailyTotalDivider} />
-          <View style={styles.dailyTotalItem}>
-            <Text style={[styles.dailyTotalValue, { color: dailyProtein >= proteinTarget ? colors.success : colors.warning }]}>
-              {Math.round((dailyProtein / proteinTarget) * 100)}%
-            </Text>
-            <Text style={styles.dailyTotalLabel}>{isTr ? 'Hedef' : 'Goal'}</Text>
-          </View>
-        </View>
-
-        {/* Protein bar */}
-        <View style={styles.proteinBarContainer}>
-          <View style={styles.proteinBarTrack}>
-            <View
-              style={[
-                styles.proteinBarFill,
-                {
-                  width: `${Math.min((dailyProtein / proteinTarget) * 100, 100)}%`,
-                  backgroundColor: dailyProtein >= proteinTarget ? colors.success : colors.primary,
-                },
-              ]}
-            />
-          </View>
-          <Text style={styles.proteinBarLabel}>
-            {dailyProtein}g / {proteinTarget}g {t('protein')}
-          </Text>
-        </View>
-
-        {/* Meal Cards — AI or static */}
-        {aiMeals
-          ? ['breakfast','lunch','dinner','snack'].map((type) => {
-              const aiMeal = aiMeals.find(m => m.type === type) || aiMeals[['breakfast','lunch','dinner','snack'].indexOf(type)];
-              return aiMeal ? renderMealCard(type, aiMeal, true) : renderMealCard(type, dayMeals[type]);
-            })
-          : <>
-              {renderMealCard('breakfast', dayMeals.breakfast)}
-              {renderMealCard('lunch', dayMeals.lunch)}
-              {renderMealCard('dinner', dayMeals.dinner)}
-              {renderMealCard('snack', dayMeals.snack)}
-            </>
-        }
-
-        <View style={{ height: 32 }} />
-      </ScrollView>
+        keyboardShouldPersistTaps="handled"
+      />
 
       {/* ── Meal Detail Modal ── */}
       <Modal
@@ -1599,6 +1678,8 @@ export default function DietPlansScreen({ navigation }) {
                     onPress={() => setModalVisible(false)}
                     style={styles.modalCloseBtn}
                     activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityLabel={isTr ? 'Kapat' : 'Close'}
                   >
                     <Text style={styles.modalCloseBtnText}>✕</Text>
                   </TouchableOpacity>
@@ -1661,17 +1742,29 @@ export default function DietPlansScreen({ navigation }) {
                     <Text style={styles.citationTitle}>
                       {isTr ? '📚 Kaynaklar' : '📚 Sources'}
                     </Text>
-                    <TouchableOpacity onPress={() => Linking.openURL('https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6566799/')}>
+                    <TouchableOpacity
+                      onPress={() => Linking.openURL('https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6566799/')}
+                      accessibilityRole="link"
+                      accessibilityLabel={isTr ? 'Kaynak: Stokes ve ark. (2018), NCBI — bağlantıyı aç' : 'Source: Stokes et al. (2018), NCBI — open link'}
+                    >
                       <Text style={styles.citationLink}>
                         • Stokes et al. (2018) — Protein for muscle preservation during weight loss. NCBI →
                       </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => Linking.openURL('https://www.dietaryguidelines.gov')}>
+                    <TouchableOpacity
+                      onPress={() => Linking.openURL('https://www.dietaryguidelines.gov')}
+                      accessibilityRole="link"
+                      accessibilityLabel={isTr ? 'Kaynak: USDA Beslenme Kılavuzu — bağlantıyı aç' : 'Source: USDA Dietary Guidelines — open link'}
+                    >
                       <Text style={styles.citationLink}>
                         • USDA Dietary Guidelines for Americans →
                       </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => Linking.openURL('https://www.who.int/news-room/fact-sheets/detail/healthy-diet')}>
+                    <TouchableOpacity
+                      onPress={() => Linking.openURL('https://www.who.int/news-room/fact-sheets/detail/healthy-diet')}
+                      accessibilityRole="link"
+                      accessibilityLabel={isTr ? 'Kaynak: WHO Sağlıklı Beslenme Kılavuzu — bağlantıyı aç' : 'Source: WHO Healthy Diet Guidelines — open link'}
+                    >
                       <Text style={styles.citationLink}>
                         • WHO Healthy Diet Guidelines →
                       </Text>
@@ -1705,12 +1798,14 @@ export default function DietPlansScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+    </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1964,9 +2059,9 @@ const styles = StyleSheet.create({
 
   citationBox: {
     backgroundColor: colors.successBg, borderRadius: radii.md, padding: 14,
-    marginBottom: 16, borderWidth: 1, borderColor: '#BBF7D0',
+    marginBottom: 16, borderWidth: 1, borderColor: colors.success,
   },
-  citationTitle: { fontSize: 13, fontFamily: fontFamily.bodyBold, fontWeight: '700', color: '#065F46', marginBottom: 8 },
+  citationTitle: { fontSize: 13, fontFamily: fontFamily.bodyBold, fontWeight: '700', color: colors.success, marginBottom: 8 },
   citationLink: { fontSize: 12, fontFamily: fontFamily.body, color: colors.success, marginBottom: 6, lineHeight: 18 },
   nutritionSummary: {
     backgroundColor: colors.surfaceVariant,

@@ -32,15 +32,25 @@ export default function SecondaryButton({
   children,
   style,
   contentStyle,
+  accessibilityRole = 'button',
+  accessibilityLabel,
   ...rest
 }) {
   const isDisabled = disabled || loading;
   const isTonal = variant === 'tonal';
+  const a11yLabel =
+    accessibilityLabel != null
+      ? accessibilityLabel
+      : typeof title === 'string'
+      ? title
+      : undefined;
   return (
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
-      accessibilityRole="button"
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={a11yLabel}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
       style={({ pressed }) => [
         styles.btn,
         isTonal ? styles.tonal : styles.outline,

@@ -1,4 +1,22 @@
-import { OPENAI_API_KEY } from '../config';
+import { callAIChat, isAIConfigured } from './aiClient';
+
+// ── Prompt-injection hardening (report C5) ────────────────────────────────────
+// Neutralize control chars / instruction markers and cap length before any
+// user-influenced text (meal names, chat turns) is embedded in a prompt.
+function sanitizeUserText(input, maxLen = 600) {
+  let s = String(input == null ? '' : input);
+  // Strip ASCII control characters (incl. newlines/tabs) -> space.
+  s = s.replace(/[\x00-\x1F\x7F]/g, ' ');
+  s = s.replace(/```/g, "'").replace(/["“”]/g, "'");
+  s = s.replace(
+    /\b(ignore|disregard|forget)\b([^\n]{0,40}?)\b(previous|above|prior|all)\b([^\n]{0,40}?)\b(instructions?|prompt|rules?)\b/gi,
+    '[filtered]'
+  );
+  s = s.replace(/\bsystem\s*:/gi, 'system-').replace(/\bassistant\s*:/gi, 'assistant-');
+  s = s.replace(/\s+/g, ' ').trim();
+  if (s.length > maxLen) s = s.slice(0, maxLen);
+  return s;
+}
 
 export async function sendCoachMessage({
   messages,
@@ -15,7 +33,9 @@ export async function sendCoachMessage({
   const isTr = language === 'tr';
   const totalProtein = todayMeals.reduce((s, m) => s + (m.protein || 0), 0);
   const mealSummary = todayMeals.length > 0
-    ? todayMeals.map(m => `${m.foodType} (${m.protein}g protein)`).join(', ')
+    ? todayMeals
+        .map(m => `${sanitizeUserText(m.foodType, 80)} (${m.protein}g protein)`)
+        .join(', ')
     : (isTr ? 'henüz öğün girilmedi' : 'no meals logged yet');
 
   // --- GLP-1 medication context (all fields optional) ---
@@ -208,33 +228,32 @@ Your role:
     return parts.join(' ');
   };
 
-  // No AI key → local reply instead of an error.
-  if (!OPENAI_API_KEY) return buildOfflineReply();
+  // No AI proxy → local reply instead of an error.
+  if (!isAIConfigured()) return buildOfflineReply();
+
+  // Sanitize each chat turn's text before sending (report C5). Preserve roles
+  // and any non-string content (defensive) untouched.
+  const safeMessages = (Array.isArray(messages) ? messages : []).map(m => {
+    if (m && typeof m.content === 'string') {
+      return { ...m, content: sanitizeUserText(m.content, 1000) };
+    }
+    return m;
+  });
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        max_tokens: 150,
-        temperature: 0.8,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...messages,
-        ],
-      }),
+    // Routed through the backend proxy — no client-side OpenAI key (report A1).
+    const reply = await callAIChat({
+      model: 'gpt-4o',
+      maxTokens: 150,
+      temperature: 0.8,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...safeMessages,
+      ],
     });
-
-    if (!response.ok) throw new Error(`OpenAI error: ${response.status}`);
-
-    const data = await response.json();
-    return data.choices[0].message.content.trim();
+    return reply;
   } catch {
-    // Network / quota / parse failure → graceful local reply.
+    // AI_UNAVAILABLE / network / quota / parse failure → graceful local reply.
     return buildOfflineReply();
   }
 }

@@ -5,7 +5,7 @@ export default {
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/icon.png",
-    userInterfaceStyle: "light",
+    userInterfaceStyle: "automatic",
     splash: {
       image: "./assets/splash.png",
       resizeMode: "contain",
@@ -14,7 +14,8 @@ export default {
     ios: {
       supportsTablet: false,
       bundleIdentifier: "com.glp1coach.app",
-      buildNumber: "37",
+      userInterfaceStyle: "automatic",
+      buildNumber: "1",
       infoPlist: {
         NSCameraUsageDescription:
           "GLP-1 Coach uses your camera to take photos of your meals for protein and nutrition tracking.",
@@ -56,10 +57,14 @@ export default {
         backgroundColor: "#4F46E5",
       },
       package: "com.glp1coach.app",
+      userInterfaceStyle: "automatic",
+      versionCode: 1,
       permissions: [
+        // CAMERA: capture meal photos for protein/nutrition tracking.
         "android.permission.CAMERA",
+        // READ_MEDIA_IMAGES: select existing meal photos (Android 13+ scoped media access).
         "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_EXTERNAL_STORAGE",
+        // ACTIVITY_RECOGNITION: read daily step count to support fitness goals.
         "android.permission.ACTIVITY_RECOGNITION",
       ],
     },
@@ -92,8 +97,10 @@ export default {
     ],
     scheme: "glp1coach",
     extra: {
-      openaiApiKey: process.env.OPENAI_API_KEY || "",
+      // NOTE: never put the OpenAI secret key here — anything in `extra` ships in
+      // the client bundle. The key lives only on the server proxy (see server/).
       revenuecatApiKey: process.env.REVENUECAT_API_KEY || "",
+      aiProxyUrl: process.env.EXPO_PUBLIC_AI_PROXY_URL || "",
       eas: {
         projectId: "b328678b-4d82-4468-9028-6890cf5aad20",
       },

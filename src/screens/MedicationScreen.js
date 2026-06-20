@@ -8,6 +8,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  FlatList,
   ActivityIndicator,
   TextInput,
   KeyboardAvoidingView,
@@ -38,7 +39,7 @@ import {
   cancelMissedDoseNudge,
 } from '../services/notificationService';
 
-import { colors, semantic, typography, spacing, radii } from '../theme';
+import { colors, semantic, typography, spacing, radii, fontFamily } from '../theme';
 import {
   Screen,
   Card,
@@ -610,6 +611,25 @@ export default function MedicationScreen({ navigation }) {
             />
           </View>
 
+          {/* ── Medical-safety banner (Apple 1.4.1) — visible near dose/titration ── */}
+          <View
+            style={styles.safetyBanner}
+            accessible
+            accessibilityRole="alert"
+            accessibilityLabel={
+              isTr
+                ? 'Tıbbi uyarı: Bu uygulama tıbbi tavsiye değildir. Doktorunuza danışın. Dozunuzu asla uygulamaya bakarak değiştirmeyin.'
+                : 'Medical warning: This app is not medical advice. Consult your doctor. Never change your dose based on the app.'
+            }
+          >
+            <Text style={styles.safetyBannerIcon}>⚠️</Text>
+            <Text style={styles.safetyBannerText}>
+              {isTr
+                ? 'Bu uygulama tıbbi tavsiye değildir. İlaç ve doz kararları için doktorunuza danışın — dozunuzu asla uygulamaya bakarak değiştirmeyin.'
+                : 'This app is not medical advice. Consult your doctor for medication and dose decisions — never change your dose based on the app.'}
+            </Text>
+          </View>
+
           {/* ── Log dose action ── */}
           <Card style={styles.logCard} contentStyle={styles.logInner} elevation="sm">
             <View style={styles.logTextCol}>
@@ -628,6 +648,8 @@ export default function MedicationScreen({ navigation }) {
               loading={logging}
               fullWidth={false}
               style={styles.logBtn}
+              accessibilityRole="button"
+              accessibilityLabel={isTr ? 'Bugünkü dozu kaydet' : 'Log today\'s dose'}
             />
 
             {/* Quick shortcut: log side effects (nausea etc.) tied to the dose. */}
@@ -748,6 +770,7 @@ export default function MedicationScreen({ navigation }) {
                 style={[styles.input, styles.doseInput]}
                 keyboardType="decimal-pad"
                 returnKeyType="done"
+                accessibilityLabel={isTr ? 'Doz, miligram' : 'Dose in milligrams'}
               />
               <View style={styles.unitPill}>
                 <Text style={styles.unitPillText}>mg</Text>
@@ -791,6 +814,8 @@ export default function MedicationScreen({ navigation }) {
               onPress={handleSaveProfile}
               loading={saving}
               style={styles.saveBtn}
+              accessibilityRole="button"
+              accessibilityLabel={isTr ? 'İlaç bilgilerini kaydet' : 'Save medication details'}
             />
           </Card>
 
@@ -828,6 +853,7 @@ export default function MedicationScreen({ navigation }) {
                 style={[styles.input, styles.doseInput]}
                 keyboardType="decimal-pad"
                 returnKeyType="done"
+                accessibilityLabel={isTr ? 'Yeni doz, miligram' : 'New dose in milligrams'}
               />
               <View style={styles.unitPill}>
                 <Text style={styles.unitPillText}>mg</Text>
@@ -847,12 +873,14 @@ export default function MedicationScreen({ navigation }) {
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="done"
+                accessibilityLabel={isTr ? 'Doz değişikliği tarihi, yıl ay gün' : 'Dose change date, year month day'}
               />
               <Pressable
                 onPress={() => setNewDoseDate(todayIso())}
                 hitSlop={6}
                 style={({ pressed }) => [styles.todayPill, pressed && styles.pressed]}
                 accessibilityRole="button"
+                accessibilityLabel={isTr ? 'Tarihi bugüne ayarla' : 'Set date to today'}
               >
                 <Text style={styles.todayPillText}>{isTr ? 'Bugün' : 'Today'}</Text>
               </Pressable>
@@ -863,6 +891,8 @@ export default function MedicationScreen({ navigation }) {
               onPress={handleRecordDoseChange}
               loading={savingDoseChange}
               style={styles.saveBtn}
+              accessibilityRole="button"
+              accessibilityLabel={isTr ? 'Doz değişikliğini kaydet' : 'Record dose change'}
             />
           </Card>
 
@@ -881,62 +911,67 @@ export default function MedicationScreen({ navigation }) {
             </Card>
           ) : (
             <Card contentStyle={styles.timelineInner}>
-              {timeline.map((entry, i) => {
-                const mg = parseMg(entry.doseMg);
-                // Previous (chronologically earlier) entry, for the delta.
-                const prev = timeline[i + 1];
-                const prevMg = prev ? parseMg(prev.doseMg) : null;
-                const delta = prevMg != null ? mg - prevMg : null;
-                const isUp = delta != null && delta > 0;
-                const isDown = delta != null && delta < 0;
-                const isLatest = i === 0;
-                const isLast = i === timeline.length - 1;
-                return (
-                  <View key={`${entry.date}-${i}`} style={styles.timelineRow}>
-                    {/* Rail + node */}
-                    <View style={styles.timelineRail}>
-                      <View
-                        style={[
-                          styles.timelineDot,
-                          isLatest && styles.timelineDotLatest,
-                        ]}
-                      />
-                      {!isLast && <View style={styles.timelineLine} />}
-                    </View>
+              <FlatList
+                data={timeline}
+                scrollEnabled={false}
+                keyExtractor={(entry, i) => `${entry.date}-${i}`}
+                renderItem={({ item: entry, index: i }) => {
+                  const mg = parseMg(entry.doseMg);
+                  // Previous (chronologically earlier) entry, for the delta.
+                  const prev = timeline[i + 1];
+                  const prevMg = prev ? parseMg(prev.doseMg) : null;
+                  const delta = prevMg != null ? mg - prevMg : null;
+                  const isUp = delta != null && delta > 0;
+                  const isDown = delta != null && delta < 0;
+                  const isLatest = i === 0;
+                  const isLast = i === timeline.length - 1;
+                  return (
+                    <View style={styles.timelineRow}>
+                      {/* Rail + node */}
+                      <View style={styles.timelineRail}>
+                        <View
+                          style={[
+                            styles.timelineDot,
+                            isLatest && styles.timelineDotLatest,
+                          ]}
+                        />
+                        {!isLast && <View style={styles.timelineLine} />}
+                      </View>
 
-                    {/* Content */}
-                    <View style={styles.timelineContent}>
-                      <View style={styles.timelineTopLine}>
-                        <Text style={styles.timelineDose}>
-                          {prevMg != null ? `${prevMg} mg → ${mg} mg` : `${mg} mg`}
-                        </Text>
-                        {isLatest ? (
-                          <Badge label={isTr ? 'Güncel' : 'Current'} tone="success" />
-                        ) : null}
-                      </View>
-                      <View style={styles.timelineMetaRow}>
-                        <Text style={styles.timelineDate}>{fmtLogDate(entry.date)}</Text>
-                        {delta != null && delta !== 0 ? (
-                          <Text
-                            style={[
-                              styles.timelineDelta,
-                              isUp && styles.deltaUp,
-                              isDown && styles.deltaDown,
-                            ]}
-                          >
-                            {isUp ? '▲ +' : '▼ '}
-                            {Math.abs(delta)} mg
+                      {/* Content */}
+                      <View style={styles.timelineContent}>
+                        <View style={styles.timelineTopLine}>
+                          <Text style={styles.timelineDose}>
+                            {prevMg != null ? `${prevMg} mg → ${mg} mg` : `${mg} mg`}
                           </Text>
-                        ) : prevMg == null ? (
-                          <Text style={styles.timelineStart}>
-                            {isTr ? 'Başlangıç' : 'Starting dose'}
-                          </Text>
-                        ) : null}
+                          {isLatest ? (
+                            <Badge label={isTr ? 'Güncel' : 'Current'} tone="success" />
+                          ) : null}
+                        </View>
+                        <View style={styles.timelineMetaRow}>
+                          <Text style={styles.timelineDate}>{fmtLogDate(entry.date)}</Text>
+                          {delta != null && delta !== 0 ? (
+                            <Text
+                              style={[
+                                styles.timelineDelta,
+                                isUp && styles.deltaUp,
+                                isDown && styles.deltaDown,
+                              ]}
+                            >
+                              {isUp ? '▲ +' : '▼ '}
+                              {Math.abs(delta)} mg
+                            </Text>
+                          ) : prevMg == null ? (
+                            <Text style={styles.timelineStart}>
+                              {isTr ? 'Başlangıç' : 'Starting dose'}
+                            </Text>
+                          ) : null}
+                        </View>
                       </View>
                     </View>
-                  </View>
-                );
-              })}
+                  );
+                }}
+              />
             </Card>
           )}
 
@@ -966,20 +1001,24 @@ export default function MedicationScreen({ navigation }) {
             </Card>
           ) : (
             <Card contentStyle={styles.historyInner}>
-              {doseLogs.map((log, i) => (
-                <ListRow
-                  key={`${log.timestamp || log.date}-${i}`}
-                  icon={<Text style={styles.rowEmoji}>💉</Text>}
-                  label={fmtLogDate(log.date)}
-                  subtitle={log.dose ? log.dose : isTr ? 'Doz belirtilmedi' : 'No dose noted'}
-                  right={
-                    i === 0 ? (
-                      <Badge label={isTr ? 'Son' : 'Latest'} tone="success" />
-                    ) : null
-                  }
-                  divider={i < doseLogs.length - 1}
-                />
-              ))}
+              <FlatList
+                data={doseLogs}
+                scrollEnabled={false}
+                keyExtractor={(log, i) => `${log.timestamp || log.date}-${i}`}
+                renderItem={({ item: log, index: i }) => (
+                  <ListRow
+                    icon={<Text style={styles.rowEmoji}>💉</Text>}
+                    label={fmtLogDate(log.date)}
+                    subtitle={log.dose ? log.dose : isTr ? 'Doz belirtilmedi' : 'No dose noted'}
+                    right={
+                      i === 0 ? (
+                        <Badge label={isTr ? 'Son' : 'Latest'} tone="success" />
+                      ) : null
+                    }
+                    divider={i < doseLogs.length - 1}
+                  />
+                )}
+              />
             </Card>
           )}
 
@@ -1057,6 +1096,26 @@ const styles = StyleSheet.create({
   // ── Status ──
   statusRow: { flexDirection: 'row', marginBottom: spacing.stackMd },
 
+  // ── Medical-safety banner (Apple 1.4.1) ──
+  safetyBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.stackSm,
+    backgroundColor: colors.warningBg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.warning,
+    borderRadius: radii.md,
+    padding: spacing.stackMd,
+    marginBottom: spacing.stackMd,
+  },
+  safetyBannerIcon: { fontSize: 18, fontFamily: fontFamily.body, lineHeight: 20 },
+  safetyBannerText: {
+    flex: 1,
+    ...typography.labelSm,
+    color: colors.onSurface,
+    lineHeight: 18,
+  },
+
   // ── Log dose card ──
   logCard: { backgroundColor: colors.infoBg, marginBottom: spacing.stackMd },
   logInner: {},
@@ -1072,7 +1131,7 @@ const styles = StyleSheet.create({
 
   // ── Reminder ──
   reminderInner: {},
-  rowEmoji: { fontSize: 20 },
+  rowEmoji: { fontSize: 20, fontFamily: fontFamily.body },
   timeBlock: {
     marginTop: spacing.stackMd,
     paddingTop: spacing.stackMd,
@@ -1212,7 +1271,7 @@ const styles = StyleSheet.create({
 
   // ── Empty ──
   emptyInner: { alignItems: 'center' },
-  emptyEmoji: { fontSize: 44, marginBottom: spacing.stackSm },
+  emptyEmoji: { fontSize: 44, marginBottom: spacing.stackSm, fontFamily: fontFamily.body },
   emptyTitle: { ...typography.headlineMd, fontSize: 18, color: colors.onSurface, marginBottom: 6, textAlign: 'center' },
   emptyDesc: { ...typography.bodyMd, fontSize: 14, color: colors.onSurfaceVariant, textAlign: 'center', lineHeight: 20 },
 

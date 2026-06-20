@@ -20,13 +20,22 @@ export default function Chip({
   children,
   style,
   contentStyle,
+  accessibilityRole,
+  accessibilityLabel,
   ...rest
 }) {
   const Container = onPress ? Pressable : View;
+  const a11yLabel =
+    accessibilityLabel != null
+      ? accessibilityLabel
+      : typeof label === 'string'
+      ? label
+      : undefined;
   return (
     <Container
       onPress={onPress}
-      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityRole={accessibilityRole || (onPress ? 'button' : undefined)}
+      accessibilityLabel={a11yLabel}
       accessibilityState={onPress ? { selected } : undefined}
       style={({ pressed } = {}) => [
         styles.chip,

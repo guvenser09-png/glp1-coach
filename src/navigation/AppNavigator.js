@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { View, ActivityIndicator, StyleSheet, useColorScheme } from 'react-native';
+import {
+  NavigationContainer,
+  DefaultTheme as NavDefaultTheme,
+  DarkTheme as NavDarkTheme,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,10 +25,30 @@ import HealthLogScreen from '../screens/HealthLogScreen';
 import WeightScreen from '../screens/WeightScreen';
 import RewardsScreen from '../screens/RewardsScreen';
 import { useLanguage } from '../context/LanguageContext';
-import { theme } from '../theme';
+import { theme, useTheme } from '../theme';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+
+// Build a React Navigation theme (used by NavigationContainer) from our tokens,
+// so the navigator chrome (backgrounds, borders, text, card) follows the OS scheme.
+function buildNavTheme(scheme, t) {
+  const isDark = scheme === 'dark';
+  const base = isDark ? NavDarkTheme : NavDefaultTheme;
+  return {
+    ...base,
+    dark: isDark,
+    colors: {
+      ...base.colors,
+      primary: t.colors.primary,
+      background: t.colors.background,
+      card: t.colors.surface,
+      text: t.colors.onSurface,
+      border: t.colors.outlineVariant,
+      notification: t.colors.danger,
+    },
+  };
+}
 
 // ─── Auth Stack ─────────────────────────────────────────────────────────────
 
@@ -43,25 +67,26 @@ function MainTabs() {
   const { t, language } = useLanguage();
   const isTr = language === 'tr';
   const insets = useSafeAreaInsets();
+  const tt = useTheme(); // scheme-aware tokens (colors/shadow follow OS theme)
 
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: theme.colors.outline,
+        tabBarActiveTintColor: tt.colors.primary,
+        tabBarInactiveTintColor: tt.colors.outline,
         tabBarStyle: {
-          backgroundColor: theme.colors.surface,
+          backgroundColor: tt.colors.surface,
           borderTopWidth: 1,
-          borderTopColor: theme.colors.outlineVariant,
-          paddingTop: theme.spacing.stackSm,
+          borderTopColor: tt.colors.outlineVariant,
+          paddingTop: tt.spacing.stackSm,
           paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
           height: 60 + (insets.bottom > 0 ? insets.bottom : 10),
-          ...theme.shadow('md'),
+          ...tt.shadow('md'),
         },
         tabBarLabelStyle: {
-          fontFamily: theme.fontFamily.bodySemiBold,
-          fontSize: theme.typography.labelSm.fontSize,
+          fontFamily: tt.fontFamily.bodySemiBold,
+          fontSize: tt.typography.labelSm.fontSize,
           fontWeight: '600',
           marginTop: 2,
         },
@@ -87,27 +112,42 @@ function MainTabs() {
       <Tab.Screen
         name="Dashboard"
         component={DashboardScreen}
-        options={{ tabBarLabel: t('dashboard') }}
+        options={{
+          tabBarLabel: t('dashboard'),
+          tabBarAccessibilityLabel: isTr ? 'Ana sayfa sekmesi' : 'Dashboard tab',
+        }}
       />
       <Tab.Screen
         name="MealAnalysis"
         component={MealAnalysisScreen}
-        options={{ tabBarLabel: isTr ? 'Günlük' : 'Daily' }}
+        options={{
+          tabBarLabel: isTr ? 'Günlük' : 'Daily',
+          tabBarAccessibilityLabel: isTr ? 'Günlük takip sekmesi' : 'Daily log tab',
+        }}
       />
       <Tab.Screen
         name="Social"
         component={SocialScreen}
-        options={{ tabBarLabel: isTr ? 'Topluluk' : 'Community' }}
+        options={{
+          tabBarLabel: isTr ? 'Topluluk' : 'Community',
+          tabBarAccessibilityLabel: isTr ? 'Topluluk sekmesi' : 'Community tab',
+        }}
       />
       <Tab.Screen
         name="DietPlans"
         component={DietPlansScreen}
-        options={{ tabBarLabel: t('dietPlans') }}
+        options={{
+          tabBarLabel: t('dietPlans'),
+          tabBarAccessibilityLabel: isTr ? 'Diyet planları sekmesi' : 'Diet plans tab',
+        }}
       />
       <Tab.Screen
         name="Settings"
         component={SettingsScreen}
-        options={{ tabBarLabel: t('settings') }}
+        options={{
+          tabBarLabel: t('settings'),
+          tabBarAccessibilityLabel: isTr ? 'Ayarlar sekmesi' : 'Settings tab',
+        }}
       />
     </Tab.Navigator>
   );
@@ -131,6 +171,9 @@ function MainAppStack() {
 
 export default function AppNavigator() {
   const { user, loading } = useAuth();
+  const scheme = useColorScheme();
+  const tt = useTheme(); // scheme-aware tokens, re-renders on OS theme flip
+  const navTheme = buildNavTheme(scheme, tt);
   const [onboardingChecked, setOnboardingChecked] = useState(false);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
 
@@ -167,15 +210,15 @@ export default function AppNavigator() {
 
   if (loading || (user && !onboardingChecked)) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
+      <View style={[styles.loadingContainer, { backgroundColor: tt.colors.background }]}>
+        <ActivityIndicator size="large" color={tt.colors.primary} />
       </View>
     );
   }
 
   if (!user) {
     return (
-      <NavigationContainer>
+      <NavigationContainer theme={navTheme}>
         <AuthStack />
       </NavigationContainer>
     );
@@ -184,7 +227,7 @@ export default function AppNavigator() {
   // User logged in but hasn't completed onboarding
   if (!onboardingComplete) {
     return (
-      <NavigationContainer>
+      <NavigationContainer theme={navTheme}>
         <Stack.Navigator screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
           <Stack.Screen name="MainApp" component={MainAppStack} />
@@ -195,7 +238,7 @@ export default function AppNavigator() {
 
   // User logged in and onboarding done
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={navTheme}>
       <MainAppStack />
     </NavigationContainer>
   );
@@ -204,6 +247,7 @@ export default function AppNavigator() {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
+    // backgroundColor applied inline (scheme-aware); fallback token below
     backgroundColor: theme.colors.background,
     alignItems: 'center',
     justifyContent: 'center',

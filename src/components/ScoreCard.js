@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { colors, fontFamily } from '../theme';
 
 const SIZE = 80;
 const STROKE = 8;
@@ -15,18 +16,23 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
  *  color  {string}  accent colour for the progress arc and text
  *  icon   {string}  emoji icon shown inside the circle
  */
-export default function ScoreCard({ score = 0, label = '', color = '#4F46E5', icon = '💪' }) {
+export default function ScoreCard({ score = 0, label = '', color = colors.primary, icon = '💪' }) {
   const clampedScore = Math.max(0, Math.min(100, score));
 
   // We build the circular progress using border trick (pure View, no SVG needed)
   const rotation = (clampedScore / 100) * 360;
 
   return (
-    <View style={styles.card}>
+    <View
+      style={styles.card}
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={label ? `${label}: ${clampedScore} / 100` : `${clampedScore} / 100`}
+    >
       {/* Circular progress indicator */}
-      <View style={styles.circleContainer}>
+      <View style={styles.circleContainer} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         {/* Background track */}
-        <View style={[styles.track, { borderColor: '#E5E7EB' }]} />
+        <View style={[styles.track, { borderColor: colors.outlineVariant }]} />
 
         {/* Progress overlay — two half-circles technique */}
         <View style={styles.progressWrapper}>
@@ -90,13 +96,13 @@ export default function ScoreCard({ score = 0, label = '', color = '#4F46E5', ic
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     alignItems: 'center',
     flex: 1,
     marginHorizontal: 6,
-    shadowColor: '#000',
+    shadowColor: colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.07,
     shadowRadius: 8,
@@ -160,23 +166,26 @@ const styles = StyleSheet.create({
     width: SIZE - STROKE * 2 - 4,
     height: SIZE - STROKE * 2 - 4,
     borderRadius: (SIZE - STROKE * 2 - 4) / 2,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   icon: {
     fontSize: 16,
     marginBottom: 1,
+    fontFamily: fontFamily.body,
   },
   scoreText: {
     fontSize: 18,
     fontWeight: '700',
     lineHeight: 20,
+    fontFamily: fontFamily.headingBold,
   },
   label: {
     fontSize: 12,
-    color: '#6B7280',
+    color: colors.outline,
     textAlign: 'center',
     fontWeight: '500',
+    fontFamily: fontFamily.bodyMedium,
   },
 });

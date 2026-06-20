@@ -13,20 +13,20 @@ export default function CoachMessage({ message = '' }) {
   const { t } = useLanguage();
 
   return (
-    <View style={styles.card}>
+    <View style={styles.card} accessible accessibilityRole="summary" accessibilityLabel={`${t('coachTitle')}. ${message}`}>
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.iconBadge}>
+        <View style={styles.iconBadge} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <Text style={styles.iconEmoji}>🧠</Text>
         </View>
         <View style={styles.headerText}>
-          <Text style={styles.title}>{t('coachTitle')}</Text>
-          <View style={styles.activeDot} />
+          <Text style={styles.title} accessibilityRole="header">{t('coachTitle')}</Text>
+          <View style={styles.activeDot} accessibilityElementsHidden importantForAccessibility="no" />
         </View>
       </View>
 
       {/* Divider */}
-      <View style={styles.divider} />
+      <View style={styles.divider} accessibilityElementsHidden importantForAccessibility="no" />
 
       {/* Message body */}
       <Text style={styles.message}>{message}</Text>

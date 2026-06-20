@@ -1,6 +1,27 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { OPENAI_API_KEY } from '../config';
+import { callAIChat, isAIConfigured } from './aiClient';
 import { FOOD_DATABASE } from '../utils/foodDatabase';
+
+// ── Prompt-injection hardening (report C5) ────────────────────────────────────
+// Strip control chars, collapse whitespace, neutralize obvious instruction
+// markers, and cap length before embedding user-typed text in a prompt.
+function sanitizeUserText(input, maxLen = 400) {
+  let s = String(input == null ? '' : input);
+  // Strip ASCII control characters (incl. newlines/tabs) -> space.
+  s = s.replace(/[\x00-\x1F\x7F]/g, ' ');
+  // Neutralize fenced/code markers and quotes that could break out of context.
+  s = s.replace(/```/g, "'").replace(/["“”]/g, "'");
+  // Defang common prompt-injection phrasing without dropping the user's content.
+  s = s.replace(
+    /\b(ignore|disregard|forget)\b([^\n]{0,40}?)\b(previous|above|prior|all)\b([^\n]{0,40}?)\b(instructions?|prompt|rules?)\b/gi,
+    '[filtered]'
+  );
+  s = s.replace(/\bsystem\s*:/gi, 'system-').replace(/\bassistant\s*:/gi, 'assistant-');
+  // Collapse runs of whitespace and trim to a sane length.
+  s = s.replace(/\s+/g, ' ').trim();
+  if (s.length > maxLen) s = s.slice(0, maxLen);
+  return s;
+}
 
 // ── Offline estimator ────────────────────────────────────────────────────────
 // Works WITHOUT an OpenAI key: matches the typed description against the local
@@ -85,12 +106,12 @@ async function imageUriToBase64(uri) {
   });
 }
 
-// Clear, localized error when the OpenAI key isn't configured (instead of a
-// cryptic 401 "analysis error"). Add OPENAI_API_KEY to a .env file (see
-// .env.example) and restart `expo start` to enable AI features.
-// Photo analysis needs vision AI — there is no offline path for an image.
+// Clear, localized error when the AI proxy isn't configured (instead of a
+// cryptic "analysis error"). Photo analysis needs vision AI — there is no
+// offline path for an image, so we surface a friendly message and let the
+// screen route the user to manual entry.
 function assertApiKeyForPhoto(isTr) {
-  if (!OPENAI_API_KEY) {
+  if (!isAIConfigured()) {
     throw new Error(
       isTr
         ? 'Fotoğraf analizi için yapay zekâ anahtarı gerekiyor. Şimdilik yemeği "Manuel Ekle" ile yazabilirsiniz — protein ve kalori otomatik tahmin edilir.'
@@ -129,7 +150,7 @@ Kurallar:
 - calories: tahmini toplam kalori
 - sufficient: protein 25g ve üzerindeyse true
 - suggestion: kas koruma odaklı 1 cümle öneri
-- proteinScore: "A+" (protein>30g, kalori<600), "A" (protein 25-30g), "B" (protein 15-25g), "C" (protein<15g, karbonhidrat fazla), "D" (işlenmiş, protein yok)
+- muscleScore: "A+" (protein>30g, kalori<600), "A" (protein 25-30g), "B" (protein 15-25g), "C" (protein<15g, karbonhidrat fazla), "D" (işlenmiş, protein yok)
 - qualityTags: 2-3 kısa etiket, ör: ["Yüksek Protein", "Orta Kalori", "İyi Kurtarma"]
 - smartSwap: tek bir yiyecek değişimi önerisi veya null`
     : `You are a nutrition expert. Carefully analyze this food photo.
@@ -157,23 +178,20 @@ Rules:
 - calories: estimated total calories
 - sufficient: true if protein >= 25g
 - suggestion: 1 sentence muscle-preservation tip
-- proteinScore: "A+" (protein>30g, calories<600), "A" (protein 25-30g), "B" (protein 15-25g), "C" (protein<15g, high carbs), "D" (ultra-processed, minimal protein)
+- muscleScore: "A+" (protein>30g, calories<600), "A" (protein 25-30g), "B" (protein 15-25g), "C" (protein<15g, high carbs), "D" (ultra-processed, minimal protein)
 - qualityTags: 2-3 short tags e.g. ["High Protein", "Moderate Carbs", "Good for Recovery"]
 - smartSwap: one specific food substitution suggestion, or null`;
 
-  const base64 = await imageUriToBase64(imageUri);
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
+  let raw;
+  try {
+    // Read the image inside the try so an unreadable file hits the friendly catch.
+    const base64 = await imageUriToBase64(imageUri);
+    // Routed through the backend proxy — no client-side OpenAI key (report A1).
+    raw = await callAIChat({
       model: 'gpt-4o',
-      max_tokens: 600,
+      maxTokens: 600,
       temperature: 0,
-      response_format: { type: 'json_object' },
+      responseFormat: { type: 'json_object' },
       messages: [
         {
           role: 'user',
@@ -189,16 +207,17 @@ Rules:
           ],
         },
       ],
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenAI API error: ${response.status} — ${err}`);
+    });
+  } catch {
+    // AI_UNAVAILABLE / network / proxy failure. There is no offline path for an
+    // image, so surface the same friendly "use manual entry" message.
+    throw new Error(
+      isTr
+        ? 'Fotoğraf analizi şu anda yapılamıyor. Lütfen daha sonra tekrar deneyin veya yemeği "Manuel Ekle" ile yazın.'
+        : 'Photo analysis is unavailable right now. Please try again later or use "Add manually" to type the meal.'
+    );
   }
 
-  const data = await response.json();
-  const raw = data.choices[0].message.content.trim();
   try {
     return buildResult(extractJSON(raw), isTr);
   } catch {
@@ -212,13 +231,16 @@ Rules:
 
 export async function analyzeMealWithText(description, language = 'en') {
   const isTr = language === 'tr';
-  // No AI key → estimate from the local food database (still returns protein/calories).
-  if (!OPENAI_API_KEY) return estimateMealOffline(description, isTr);
+  // No AI proxy → estimate from the local food database (still returns protein/calories).
+  if (!isAIConfigured()) return estimateMealOffline(description, isTr);
+
+  // Sanitize user-typed text before embedding it in the prompt (report C5).
+  const safeDescription = sanitizeUserText(description);
 
   const prompt = isTr
     ? `Sen bir beslenme uzmanısın. Kullanıcının tarif ettiği yemeği analiz et.
 
-Yemek açıklaması: "${description}"
+Yemek açıklaması: "${safeDescription}"
 
 SADECE aşağıdaki JSON formatında yanıt ver, başka hiçbir şey yazma:
 {
@@ -239,11 +261,11 @@ Kurallar:
 - portionSize: "Küçük", "Orta" veya "Büyük"
 - calories: tahmini toplam kalori
 - sufficient: protein 25g ve üzerindeyse true
-- proteinScore: "A+" (>30g protein, <600 kcal), "A" (25-30g), "B" (15-25g), "C" (<15g), "D" (işlenmiş)
+- muscleScore: "A+" (>30g protein, <600 kcal), "A" (25-30g), "B" (15-25g), "C" (<15g), "D" (işlenmiş)
 - qualityTags: 2-3 kısa etiket`
     : `You are a nutrition expert. Analyze the meal described by the user.
 
-Meal description: "${description}"
+Meal description: "${safeDescription}"
 
 Respond with ONLY this JSON, nothing else:
 {
@@ -264,33 +286,22 @@ Rules:
 - portionSize: "Small", "Medium", or "Large"
 - calories: estimated total calories
 - sufficient: true if protein >= 25g
-- proteinScore: "A+" (>30g, <600 kcal), "A" (25-30g), "B" (15-25g), "C" (<15g), "D" (ultra-processed)
+- muscleScore: "A+" (>30g, <600 kcal), "A" (25-30g), "B" (15-25g), "C" (<15g), "D" (ultra-processed)
 - qualityTags: 2-3 short tags`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        max_tokens: 500,
-        temperature: 0,
-        response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content: prompt }],
-      }),
+    // Routed through the backend proxy — no client-side OpenAI key (report A1).
+    const raw = await callAIChat({
+      model: 'gpt-4o',
+      maxTokens: 500,
+      temperature: 0,
+      responseFormat: { type: 'json_object' },
+      messages: [{ role: 'user', content: prompt }],
     });
-
-    if (!response.ok) throw new Error(`OpenAI API error: ${response.status}`);
-
-    const data = await response.json();
-    const raw = data.choices[0].message.content.trim();
     return buildResult(extractJSON(raw), isTr);
   } catch {
-    // AI failed (network / quota / parse) → fall back to the offline estimate
-    // so the user still gets protein & calories.
+    // AI_UNAVAILABLE / network / quota / parse → fall back to the offline
+    // estimate so the user still gets protein & calories.
     return estimateMealOffline(description, isTr);
   }
 }

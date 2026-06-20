@@ -30,14 +30,25 @@ export default function PrimaryButton({
   children,
   style,
   contentStyle,
+  accessibilityRole = 'button',
+  accessibilityLabel,
   ...rest
 }) {
   const isDisabled = disabled || loading;
+  // Auto-derive an accessible label from the title when caller doesn't supply one.
+  const a11yLabel =
+    accessibilityLabel != null
+      ? accessibilityLabel
+      : typeof title === 'string'
+      ? title
+      : undefined;
   return (
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
-      accessibilityRole="button"
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={a11yLabel}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
       style={({ pressed }) => [
         styles.btn,
         fullWidth && styles.fullWidth,

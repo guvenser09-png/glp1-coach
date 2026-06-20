@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -29,13 +30,23 @@ import {
 } from '../components/ui';
 import WeightChart from '../components/WeightChart';
 import {
-  colors,
   fontFamily,
   radii,
-  shadow,
   spacing,
   typography,
+  useTheme,
 } from '../theme';
+
+// Fixed tints that read on the indigo hero gradient (which stays dark in both
+// light & dark schemes), so they are intentionally scheme-independent.
+const HERO_LOSS_TINT = '#A7F3D0'; // soft green
+const HERO_GAIN_TINT = '#FECACA'; // soft red
+const HERO_OVERLAY_STRONG = 'rgba(255,255,255,0.85)';
+const HERO_OVERLAY_MED = 'rgba(255,255,255,0.8)';
+const HERO_OVERLAY_SOFT = 'rgba(255,255,255,0.75)';
+const HERO_TRACK = 'rgba(255,255,255,0.28)';
+// Modal scrim — standard semi-transparent black dim, scheme-independent.
+const MODAL_SCRIM = 'rgba(0,0,0,0.5)';
 
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -58,6 +69,8 @@ export default function WeightScreen({ navigation }) {
   const { user } = useAuth();
   const { t, language } = useLanguage();
   const isTr = language === 'tr';
+  const { colors, shadow } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, shadow), [colors, shadow]);
   const {
     weightUnit,
     toDisplayWeight,
@@ -297,7 +310,13 @@ export default function WeightScreen({ navigation }) {
           hitSlop={10}
           style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
         >
-          <Text style={styles.backIcon}>‹</Text>
+          <Text
+            style={styles.backIcon}
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          >
+            ‹
+          </Text>
         </Pressable>
         <Text style={styles.headerTitle}>
           {isTr ? 'Kilo Takibi' : 'Weight Tracking'}
@@ -310,10 +329,13 @@ export default function WeightScreen({ navigation }) {
           <ActivityIndicator color={colors.primary} size="large" />
         </View>
       ) : (
-        <ScrollView
+        <FlatList
+          data={historyRows}
+          keyExtractor={(row, i) => `${row.date}-${i}`}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-        >
+          ListHeaderComponent={
+            <View>
           {/* ── Hero: current weight + change + goal progress ── */}
           <GradientHero style={styles.hero} padding={spacing.stackLg}>
             <Text style={styles.heroLabel}>
@@ -334,7 +356,7 @@ export default function WeightScreen({ navigation }) {
                     <Text
                       style={[
                         styles.heroChange,
-                        { color: lossIsGood ? '#A7F3D0' : '#FECACA' },
+                        { color: lossIsGood ? HERO_LOSS_TINT : HERO_GAIN_TINT },
                       ]}
                     >
                       {stats.changeKg < 0 ? '▼' : stats.changeKg > 0 ? '▲' : '•'}{' '}
@@ -367,7 +389,7 @@ export default function WeightScreen({ navigation }) {
                   size={104}
                   strokeWidth={11}
                   color={colors.white}
-                  trackColor="rgba(255,255,255,0.28)"
+                  trackColor={HERO_TRACK}
                 >
                   <Text style={styles.ringPct}>
                     {Math.round(goalProgress * 100)}%
@@ -386,7 +408,7 @@ export default function WeightScreen({ navigation }) {
                   progress={goalProgress}
                   height={8}
                   color={colors.white}
-                  trackColor="rgba(255,255,255,0.28)"
+                  trackColor={HERO_TRACK}
                 />
                 <View style={styles.heroGoalMarks}>
                   <Text style={styles.heroGoalMark}>
@@ -465,8 +487,15 @@ export default function WeightScreen({ navigation }) {
           <PrimaryButton
             title={isTr ? 'Kilo Ekle' : 'Log Weight'}
             onPress={openModal}
-            icon={<Text style={styles.btnIcon}>⚖️</Text>}
+            icon={<Text style={styles.btnIcon} accessibilityElementsHidden importantForAccessibility="no">⚖️</Text>}
             style={styles.addBtn}
+            accessibilityRole="button"
+            accessibilityLabel={isTr ? 'Kilo ekle' : 'Log weight'}
+            accessibilityHint={
+              isTr
+                ? 'Yeni kilo kaydı eklemek için bir pencere açar'
+                : 'Opens a dialog to add a new weight entry'
+            }
           />
 
           {/* ── History list ── */}
@@ -474,7 +503,77 @@ export default function WeightScreen({ navigation }) {
             title={isTr ? 'Geçmiş' : 'History'}
             style={styles.section}
           />
-          {historyRows.length === 0 ? (
+            </View>
+          }
+          renderItem={({ item: row, index: i }) => {
+            const isLatest = i === 0;
+            const delta = row.delta;
+            const deltaDown = delta != null && delta < 0;
+            const deltaUp = delta != null && delta > 0;
+            const hasDelta = delta != null && Math.abs(delta) > 0.0001;
+            // One readable summary per row for screen readers.
+            const a11yRowLabel =
+              `${formatDate(row.date)}${
+                isLatest ? `, ${isTr ? 'en güncel' : 'latest'}` : ''
+              }. ${fmt(row.weight)} ${weightUnit}.` +
+              (hasDelta
+                ? ` ${
+                    deltaDown
+                      ? isTr
+                        ? 'önceki kayda göre düşüş'
+                        : 'down from previous entry'
+                      : isTr
+                        ? 'önceki kayda göre artış'
+                        : 'up from previous entry'
+                  } ${fmtDelta(delta)} ${weightUnit}.`
+                : '');
+            return (
+              <View
+                accessible
+                accessibilityRole="text"
+                accessibilityLabel={a11yRowLabel}
+                style={[
+                  styles.historyRow,
+                  i === 0 && styles.historyRowFirst,
+                  i === historyRows.length - 1 && styles.historyRowLast,
+                  i < historyRows.length - 1 && styles.historyRowDivider,
+                ]}
+              >
+                <View style={styles.historyLeft}>
+                  <View
+                    style={[styles.dateDot, isLatest && styles.dateDotActive]}
+                  />
+                  <View>
+                    <Text style={styles.historyDate}>
+                      {formatDate(row.date)}
+                    </Text>
+                    {isLatest ? (
+                      <Text style={styles.historyLatest}>
+                        {isTr ? 'En güncel' : 'Latest'}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+
+                <View style={styles.historyRight}>
+                  <Text style={styles.historyWeight}>
+                    {fmt(row.weight)}
+                    <Text style={styles.historyWeightUnit}> {weightUnit}</Text>
+                  </Text>
+                  {hasDelta ? (
+                    <Badge
+                      tone={deltaDown ? 'success' : deltaUp ? 'danger' : 'neutral'}
+                      label={`${deltaDown ? '▼' : '▲'} ${fmtDelta(delta)}`}
+                      style={styles.deltaBadge}
+                    />
+                  ) : (
+                    <Text style={styles.deltaFlat}>—</Text>
+                  )}
+                </View>
+              </View>
+            );
+          }}
+          ListEmptyComponent={
             <Card style={styles.emptyCard}>
               <Text style={styles.emptyIcon}>📉</Text>
               <Text style={styles.emptyTitle}>
@@ -486,63 +585,10 @@ export default function WeightScreen({ navigation }) {
                   : 'Log your first weight to start tracking progress.'}
               </Text>
             </Card>
-          ) : (
-            <Card style={styles.historyCard} padding={0}>
-              {historyRows.map((row, i) => {
-                const isLatest = i === 0;
-                const delta = row.delta;
-                const deltaDown = delta != null && delta < 0;
-                const deltaUp = delta != null && delta > 0;
-                return (
-                  <View
-                    key={`${row.date}-${i}`}
-                    style={[
-                      styles.historyRow,
-                      i < historyRows.length - 1 && styles.historyRowDivider,
-                    ]}
-                  >
-                    <View style={styles.historyLeft}>
-                      <View
-                        style={[
-                          styles.dateDot,
-                          isLatest && styles.dateDotActive,
-                        ]}
-                      />
-                      <View>
-                        <Text style={styles.historyDate}>
-                          {formatDate(row.date)}
-                        </Text>
-                        {isLatest ? (
-                          <Text style={styles.historyLatest}>
-                            {isTr ? 'En güncel' : 'Latest'}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
-
-                    <View style={styles.historyRight}>
-                      <Text style={styles.historyWeight}>
-                        {fmt(row.weight)}
-                        <Text style={styles.historyWeightUnit}> {weightUnit}</Text>
-                      </Text>
-                      {delta != null && Math.abs(delta) > 0.0001 ? (
-                        <Badge
-                          tone={deltaDown ? 'success' : deltaUp ? 'danger' : 'neutral'}
-                          label={`${deltaDown ? '▼' : '▲'} ${fmtDelta(delta)}`}
-                          style={styles.deltaBadge}
-                        />
-                      ) : (
-                        <Text style={styles.deltaFlat}>—</Text>
-                      )}
-                    </View>
-                  </View>
-                );
-              })}
-            </Card>
-          )}
-
-          <View style={{ height: spacing.stackLg }} />
-        </ScrollView>
+          }
+          ListFooterComponent={<View style={{ height: spacing.stackLg }} />}
+          style={styles.historyList}
+        />
       )}
 
       {/* ── Add-weight modal ── */}
@@ -577,6 +623,12 @@ export default function WeightScreen({ navigation }) {
                 value={weightInput}
                 onChangeText={setWeightInput}
                 autoFocus
+                accessibilityLabel={weightLabel(isTr)}
+                accessibilityHint={
+                  isTr
+                    ? `Geçerli aralık: ${weightRange.min} ile ${weightRange.max} ${weightUnit} arası`
+                    : `Valid range: ${weightRange.min} to ${weightRange.max} ${weightUnit}`
+                }
               />
               <Text style={styles.modalHint}>
                 {isTr
@@ -591,6 +643,10 @@ export default function WeightScreen({ navigation }) {
                     pressed && styles.cancelBtnPressed,
                   ]}
                   onPress={closeModal}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    t('cancel') === 'cancel' ? (isTr ? 'İptal' : 'Cancel') : t('cancel')
+                  }
                 >
                   <Text style={styles.cancelBtnText}>
                     {t('cancel') === 'cancel' ? (isTr ? 'İptal' : 'Cancel') : t('cancel')}
@@ -611,7 +667,8 @@ export default function WeightScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, shadow) =>
+  StyleSheet.create({
   // Header
   header: {
     flexDirection: 'row',
@@ -655,7 +712,7 @@ const styles = StyleSheet.create({
   hero: { marginBottom: spacing.gutter },
   heroLabel: {
     ...typography.labelSm,
-    color: 'rgba(255,255,255,0.8)',
+    color: HERO_OVERLAY_MED,
     letterSpacing: 1.2,
     marginBottom: spacing.stackSm,
   },
@@ -672,7 +729,7 @@ const styles = StyleSheet.create({
   },
   heroUnit: {
     ...typography.headlineMd,
-    color: 'rgba(255,255,255,0.85)',
+    color: HERO_OVERLAY_STRONG,
     marginBottom: 8,
     marginLeft: 4,
   },
@@ -689,12 +746,12 @@ const styles = StyleSheet.create({
   },
   heroChangeSub: {
     ...typography.bodyMd,
-    color: 'rgba(255,255,255,0.85)',
+    color: HERO_OVERLAY_STRONG,
     marginLeft: 6,
   },
   heroPerDay: {
     ...typography.labelSm,
-    color: 'rgba(255,255,255,0.75)',
+    color: HERO_OVERLAY_SOFT,
     marginTop: 4,
   },
   ringPct: {
@@ -704,7 +761,7 @@ const styles = StyleSheet.create({
   },
   ringLabel: {
     ...typography.labelSm,
-    color: 'rgba(255,255,255,0.85)',
+    color: HERO_OVERLAY_STRONG,
   },
   heroGoalBlock: { marginTop: spacing.gutter },
   heroGoalMarks: {
@@ -714,7 +771,7 @@ const styles = StyleSheet.create({
   },
   heroGoalMark: {
     ...typography.labelSm,
-    color: 'rgba(255,255,255,0.85)',
+    color: HERO_OVERLAY_STRONG,
   },
 
   // Quick stats
@@ -764,12 +821,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   historyCard: { overflow: 'hidden' },
+  // FlatList card-like container: rounded surface block built from rows.
+  historyList: { overflow: 'visible' },
   historyRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 14,
     paddingHorizontal: spacing.cardPadding,
+    backgroundColor: colors.surface,
+  },
+  historyRowFirst: {
+    borderTopLeftRadius: radii.card,
+    borderTopRightRadius: radii.card,
+    ...shadow('sm'),
+  },
+  historyRowLast: {
+    borderBottomLeftRadius: radii.card,
+    borderBottomRightRadius: radii.card,
   },
   historyRowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -816,7 +885,7 @@ const styles = StyleSheet.create({
   // Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(25,28,30,0.5)',
+    backgroundColor: MODAL_SCRIM,
     justifyContent: 'flex-end',
   },
   modalCard: {
@@ -890,4 +959,4 @@ const styles = StyleSheet.create({
     color: colors.onSurfaceVariant,
   },
   saveBtn: { flex: 1, marginLeft: spacing.stackSm },
-});
+  });

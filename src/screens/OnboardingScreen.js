@@ -194,6 +194,11 @@ export default function OnboardingScreen({ navigation }) {
               ? 'Protein hedefini koru, kasını sürdür, ilerlemeni takip et.'
               : 'Protect your protein, preserve your muscle, track your progress.'}
           </Text>
+          <Text style={styles.heroDisclaimer}>
+            {isTr
+              ? 'Yaşam tarzı desteği — tıbbi tavsiye değildir. Sağlık kararları için doktorunuza danışın.'
+              : 'Lifestyle support, not medical advice. Consult your doctor for health decisions.'}
+          </Text>
         </GradientHero>
 
         <Text style={styles.stepNumber}>{stepLabel(1)}</Text>
@@ -216,6 +221,9 @@ export default function OnboardingScreen({ navigation }) {
                 style={[styles.genderCard, selected && styles.genderCardSelected]}
                 onPress={() => setLanguage(opt.key)}
                 activeOpacity={0.8}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={opt.label}
               >
                 <Text style={styles.genderEmoji}>{opt.flag}</Text>
                 <Text style={[styles.genderLabel, selected && styles.genderLabelSelected]}>{opt.label}</Text>
@@ -241,6 +249,9 @@ export default function OnboardingScreen({ navigation }) {
                 style={[styles.genderCard, selected && styles.genderCardSelected]}
                 onPress={() => setUnitSystem(opt.key)}
                 activeOpacity={0.8}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={opt.label}
               >
                 <Text style={styles.genderEmoji}>{opt.flag}</Text>
                 <Text style={[styles.genderLabel, selected && styles.genderLabelSelected]}>{opt.label}</Text>
@@ -283,6 +294,7 @@ export default function OnboardingScreen({ navigation }) {
               value={weightInput}
               onChangeText={setWeightInput}
               returnKeyType="next"
+              accessibilityLabel={isTr ? `Kilo (${weightUnit})` : `Weight (${weightUnit})`}
             />
             <Text style={styles.inputCardUnit}>{weightUnit}</Text>
           </View>
@@ -320,6 +332,7 @@ export default function OnboardingScreen({ navigation }) {
               value={heightInput}
               onChangeText={setHeightInput}
               returnKeyType="done"
+              accessibilityLabel={isTr ? `Boy (${heightUnit})` : `Height (${heightUnit})`}
             />
             <Text style={styles.inputCardUnit}>{heightUnit}</Text>
           </View>
@@ -342,6 +355,8 @@ export default function OnboardingScreen({ navigation }) {
           style={styles.skipLink}
           onPress={() => animateStep(1)}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={isTr ? 'Şimdi atla, sonra gir' : 'Skip for now'}
         >
           <Text style={styles.skipLinkText}>
             {isTr ? 'Şimdi atla, sonra gir' : 'Skip for now'}
@@ -371,6 +386,11 @@ export default function OnboardingScreen({ navigation }) {
         style={styles.checkRow}
         onPress={() => setDisclaimerAccepted((v) => !v)}
         activeOpacity={0.8}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: disclaimerAccepted }}
+        accessibilityLabel={isTr
+          ? 'Bu bilgilendirmeyi okudum ve anladım.'
+          : 'I have read and understood this disclaimer.'}
       >
         <View style={[styles.checkbox, disclaimerAccepted && styles.checkboxChecked]}>
           {disclaimerAccepted && <Text style={styles.checkboxTick}>✓</Text>}
@@ -419,6 +439,9 @@ export default function OnboardingScreen({ navigation }) {
                 style={[styles.genderCard, selected && styles.genderCardSelected]}
                 onPress={() => setGender(opt.key)}
                 activeOpacity={0.8}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={isTr ? opt.tr : opt.en}
               >
                 <Text style={styles.genderEmoji}>{opt.emoji}</Text>
                 <Text style={[styles.genderLabel, selected && styles.genderLabelSelected]}>
@@ -438,6 +461,9 @@ export default function OnboardingScreen({ navigation }) {
           style={styles.genderSkip}
           onPress={() => setGender('prefer_not_to_say')}
           activeOpacity={0.7}
+          accessibilityRole="radio"
+          accessibilityState={{ selected: gender === 'prefer_not_to_say' }}
+          accessibilityLabel={isTr ? 'Belirtmek istemiyorum' : 'Prefer not to say'}
         >
           <Text style={[styles.genderSkipText, gender === 'prefer_not_to_say' && styles.genderSkipTextActive]}>
             {isTr ? 'Belirtmek istemiyorum' : 'Prefer not to say'}
@@ -484,6 +510,9 @@ export default function OnboardingScreen({ navigation }) {
               style={[styles.goalCard, selected && styles.goalCardSelected]}
               onPress={() => toggleGoal(goal.key)}
               activeOpacity={0.8}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: selected }}
+              accessibilityLabel={isTr ? goal.tr : goal.en}
             >
               <Text style={styles.goalEmoji}>{goal.emoji}</Text>
               <Text style={[styles.goalText, selected && styles.goalTextSelected]}>
@@ -543,6 +572,15 @@ export default function OnboardingScreen({ navigation }) {
             : 'Optionally add details so we can remind you about injections (optional)'}
         </Text>
 
+        {/* Health-data disclaimer near medication entry */}
+        <View style={styles.medDisclaimer}>
+          <Text style={styles.medDisclaimerText}>
+            {isTr
+              ? '⚕️ Bu bilgiler yalnızca hatırlatıcılar içindir ve tıbbi tavsiye değildir. İlaç veya dozunuzla ilgili kararları doktorunuza danışın.'
+              : '⚕️ This info is used only for reminders and is not medical advice. Always consult your doctor about your medication or dose.'}
+          </Text>
+        </View>
+
         {/* Status */}
         <Text style={styles.measureLabel}>{isTr ? 'Durum' : 'Status'}</Text>
         <View style={styles.glp1Options}>
@@ -554,6 +592,9 @@ export default function OnboardingScreen({ navigation }) {
                 style={[styles.statusPill, selected && styles.statusPillSelected]}
                 onPress={() => setGlp1Status(selected ? null : key)}
                 activeOpacity={0.8}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={t(key)}
               >
                 <Text style={[styles.statusPillText, selected && styles.statusPillTextSelected]}>
                   {t(key)}
@@ -578,6 +619,9 @@ export default function OnboardingScreen({ navigation }) {
                 style={[styles.drugCard, selected && styles.drugCardSelected]}
                 onPress={() => setGlp1Drug(selected ? null : opt.key)}
                 activeOpacity={0.8}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={label}
               >
                 <Text style={styles.drugEmoji}>{opt.emoji}</Text>
                 <Text style={[styles.drugLabel, selected && styles.drugLabelSelected]}>{label}</Text>
@@ -605,6 +649,7 @@ export default function OnboardingScreen({ navigation }) {
             value={glp1Dose}
             onChangeText={setGlp1Dose}
             returnKeyType="done"
+            accessibilityLabel={isTr ? 'Doz miktarı' : 'Dose amount'}
           />
         </View>
 
@@ -621,6 +666,9 @@ export default function OnboardingScreen({ navigation }) {
                 style={[styles.weekdayChip, selected && styles.weekdayChipSelected]}
                 onPress={() => setInjectionWeekday(selected ? null : d.key)}
                 activeOpacity={0.8}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={d.label}
               >
                 <Text style={[styles.weekdayText, selected && styles.weekdayTextSelected]}>{d.label}</Text>
               </TouchableOpacity>
@@ -646,6 +694,8 @@ export default function OnboardingScreen({ navigation }) {
           style={styles.skipLink}
           onPress={() => animateStep(5)}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={isTr ? 'Şimdi atla' : 'Skip for now'}
         >
           <Text style={styles.skipLinkText}>
             {isTr ? 'Şimdi atla' : 'Skip for now'}
@@ -809,7 +859,16 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.body,
     fontSize: 14,
     lineHeight: 20,
-    color: 'rgba(255,255,255,0.9)',
+    color: colors.onPrimary,
+    opacity: 0.9,
+  },
+  heroDisclaimer: {
+    fontFamily: fontFamily.bodyMedium,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.onPrimary,
+    opacity: 0.85,
+    marginTop: spacing.sm,
   },
 
   stepNumber: {
@@ -841,13 +900,27 @@ const styles = StyleSheet.create({
     padding: spacing.gutter,
     marginBottom: spacing.stackLg - 4,
     borderWidth: 1.5,
-    borderColor: '#FDE68A',
+    borderColor: colors.warning,
   },
   disclaimerBody: {
     fontFamily: fontFamily.body,
     fontSize: 13,
     color: colors.onSurfaceVariant,
     lineHeight: 20,
+  },
+  medDisclaimer: {
+    backgroundColor: colors.warningBg,
+    borderRadius: radii.md,
+    padding: spacing.gutter,
+    marginBottom: spacing.stackMd,
+    borderWidth: 1,
+    borderColor: colors.warning,
+  },
+  medDisclaimerText: {
+    fontFamily: fontFamily.bodyMedium,
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.warning,
   },
   checkRow: {
     flexDirection: 'row',

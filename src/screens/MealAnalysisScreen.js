@@ -58,7 +58,7 @@ function getMuscleScoreLabel(score, isTr) {
       desc: isTr
         ? 'Protein alımınız kaslarınızı çok iyi koruyor.'
         : 'Your protein intake is protecting your muscles well.',
-      color: '#10B981',
+      color: colors.success,
     };
   }
   if (score >= 65) {
@@ -68,7 +68,7 @@ function getMuscleScoreLabel(score, isTr) {
       desc: isTr
         ? 'Daha iyi sonuçlar için proteini biraz artırın.'
         : 'Slightly increase protein for better results.',
-      color: '#4F46E5',
+      color: colors.primary,
     };
   }
   if (score >= 40) {
@@ -78,7 +78,7 @@ function getMuscleScoreLabel(score, isTr) {
       desc: isTr
         ? 'Protein alımı optimal değil. Günlük hedefe ulaşmaya çalışın.'
         : 'Protein intake is below optimal. Try to reach your daily target.',
-      color: '#F59E0B',
+      color: colors.warning,
     };
   }
   return {
@@ -87,7 +87,7 @@ function getMuscleScoreLabel(score, isTr) {
     desc: isTr
       ? 'Çok düşük protein alımı. Kas koruma için bugün proteine öncelik verin.'
       : 'Very low protein intake. Prioritize protein today for muscle maintenance.',
-    color: '#EF4444',
+    color: colors.danger,
   };
 }
 
@@ -99,8 +99,8 @@ function getReboundRiskContent(level, isTr) {
       desc: isTr
         ? 'Alışkanlıklarınız ilerlemenizi korumaya yardımcı oluyor. Devam edin!'
         : 'Your habits are helping sustain your progress. Keep it up!',
-      color: '#10B981',
-      bg: '#ECFDF5',
+      color: colors.success,
+      bg: colors.successBg,
     };
   }
   if (level === 'Medium') {
@@ -111,7 +111,7 @@ function getReboundRiskContent(level, isTr) {
         ? 'Bazı alışkanlıkların dikkat gerektiriyor. Protein ve harekete odaklan.'
         : 'Some habits need attention. Focus on protein and movement.',
       color: '#D97706',
-      bg: '#FFFBEB',
+      bg: colors.warningBg,
     };
   }
   return {
@@ -120,8 +120,8 @@ function getReboundRiskContent(level, isTr) {
     desc: isTr
       ? 'Hızlı kilo kaybı + düşük protein = sürdürülebilirlik riski. Hemen protein kaynaklarına yönelin.'
       : 'Fast weight loss + low protein = sustainability risk. Add protein sources now.',
-    color: '#EF4444',
-    bg: '#FEF2F2',
+    color: colors.danger,
+    bg: colors.dangerBg,
   };
 }
 
@@ -468,7 +468,7 @@ export default function MealAnalysisScreen({ navigation }) {
       return;
     }
     const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
@@ -742,7 +742,7 @@ export default function MealAnalysisScreen({ navigation }) {
 
   // Kalori dengesi: yenilen - (BMR + aktif kalori) → eksi = açık (iyi), artı = fazla (kötü)
   const calBalance = totalCalories > 0 ? totalCalories - (bmr + activeCalories) : null;
-  const balanceColor = calBalance === null ? '#9CA3AF' : calBalance > 0 ? '#EF4444' : '#10B981';
+  const balanceColor = calBalance === null ? colors.outline : calBalance > 0 ? colors.danger : colors.success;
   const balanceIcon = calBalance === null ? '—' : calBalance > 0 ? '🔴' : '🟢';
   const PORTIONS = ['Small', 'Medium', 'Large'];
   const portionLabel = (p) => ({ Small: isTr ? 'Küçük' : 'Small', Medium: isTr ? 'Orta' : 'Medium', Large: isTr ? 'Büyük' : 'Large' }[p] || p);
@@ -886,7 +886,13 @@ export default function MealAnalysisScreen({ navigation }) {
               {isTr ? 'Fotoğraf çek veya manuel ekle' : 'Analyze a photo or add manually'}
             </Text>
           </View>
-          <TouchableOpacity style={styles.coachBtn} onPress={openChat} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={styles.coachBtn}
+            onPress={openChat}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={isTr ? 'Koç ile sohbet et' : 'Chat with coach'}
+          >
             <Text style={styles.coachBtnEmoji}>🤖</Text>
             <Text style={styles.coachBtnText}>{isTr ? 'Koç' : 'Coach'}</Text>
           </TouchableOpacity>
@@ -894,19 +900,43 @@ export default function MealAnalysisScreen({ navigation }) {
 
         {/* Action Buttons */}
         <View style={styles.actionRow}>
-          <TouchableOpacity style={styles.cameraBtn} onPress={takePhoto} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.cameraBtn}
+            onPress={takePhoto}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={isTr ? 'Fotoğraf çek' : 'Take photo'}
+          >
             <Text style={styles.photoBtnIcon}>📸</Text>
             <Text style={styles.photoBtnText}>{isTr ? 'Çek' : 'Camera'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.photoBtn} onPress={pickImage} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.photoBtn}
+            onPress={pickImage}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={isTr ? 'Galeriden seç' : 'Pick from gallery'}
+          >
             <Text style={styles.photoBtnIcon}>🖼️</Text>
             <Text style={styles.photoBtnText}>{isTr ? 'Galeri' : 'Gallery'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.manualBtn} onPress={openManualAdd} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.manualBtn}
+            onPress={openManualAdd}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={isTr ? 'Manuel öğün ekle' : 'Add meal manually'}
+          >
             <Text style={styles.manualBtnIcon}>✏️</Text>
             <Text style={styles.manualBtnText}>{isTr ? 'Manuel' : 'Manual'}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.exerciseBtn} onPress={() => setExerciseModalVisible(true)} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.exerciseBtn}
+            onPress={() => setExerciseModalVisible(true)}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={isTr ? 'Egzersiz ekle' : 'Log exercise'}
+          >
             <Text style={styles.manualBtnIcon}>🏋️</Text>
             <Text style={styles.exerciseBtnText}>{isTr ? 'Spor' : 'Exercise'}</Text>
           </TouchableOpacity>
@@ -1028,7 +1058,13 @@ export default function MealAnalysisScreen({ navigation }) {
                 {isTr ? '⌚ Apple Watch & Sağlık' : '⌚ Apple Watch & Health'}
               </Text>
               {healthAuthorized && (
-                <TouchableOpacity onPress={refreshHealthData} disabled={healthLoading} style={styles.watchRefreshBtn}>
+                <TouchableOpacity
+                  onPress={refreshHealthData}
+                  disabled={healthLoading}
+                  style={styles.watchRefreshBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={isTr ? 'Sağlık verisini yenile' : 'Refresh health data'}
+                >
                   {healthLoading
                     ? <ActivityIndicator size="small" color={colors.primary} />
                     : <Text style={styles.watchRefreshText}>{isTr ? '↻ Yenile' : '↻ Refresh'}</Text>}
@@ -1048,6 +1084,8 @@ export default function MealAnalysisScreen({ navigation }) {
                   onPress={connectAppleWatch}
                   disabled={healthLoading}
                   activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={isTr ? 'Apple Watch\'a bağlan' : 'Connect Apple Watch'}
                 >
                   {healthLoading
                     ? <ActivityIndicator color={colors.white} size="small" />
@@ -1102,10 +1140,10 @@ export default function MealAnalysisScreen({ navigation }) {
             </View>
             <Text style={styles.balanceMinus}>−</Text>
             <View style={styles.balanceItem}>
-              <Text style={[styles.balanceValue, usingWatchEnergy && { color: '#10B981' }]}>
+              <Text style={[styles.balanceValue, usingWatchEnergy && { color: colors.success }]}>
                 {activeCalories > 0 ? activeCalories : '—'}
               </Text>
-              <Text style={[styles.balanceLabel, usingWatchEnergy && { color: '#10B981' }]}>
+              <Text style={[styles.balanceLabel, usingWatchEnergy && { color: colors.success }]}>
                 {usingWatchEnergy
                   ? '🔥⌚ Apple Watch'
                   : (isTr ? '🏋️ Spor' : '🏋️ Exercise')}
@@ -1130,7 +1168,7 @@ export default function MealAnalysisScreen({ navigation }) {
             {isTr ? `BMR ${userWeight}kg ${userGender === 'male' ? '(erkek)' : userGender === 'female' ? '(kadın)' : ''} baz alınarak hesaplandı` : `BMR calculated using ${userWeight}kg ${userGender === 'male' ? '(male)' : userGender === 'female' ? '(female)' : ''}`}
           </Text>
           {usingWatchEnergy && (
-            <Text style={[styles.balanceBmrNote, { color: '#10B981', marginTop: 2 }]}>
+            <Text style={[styles.balanceBmrNote, { color: colors.success, marginTop: 2 }]}>
               {isTr
                 ? '🔥⌚ Aktif kalori Apple Watch\'tan alındı (manuel tahmin yerine)'
                 : '🔥⌚ Active calories from Apple Watch (instead of manual estimate)'}
@@ -1156,26 +1194,41 @@ export default function MealAnalysisScreen({ navigation }) {
           </Card>
         ) : (
           <Card padding={0} elevation="md" style={styles.mealsCard}>
-            {todayMeals.map((meal, index) => (
-              <View key={index} style={[styles.mealItem, index < todayMeals.length - 1 && styles.mealBorder]}>
-                <Text style={styles.mealEmoji}>{getFoodEmoji(meal.foodType)}</Text>
-                <View style={styles.mealInfo}>
-                  <Text style={styles.mealName}>{meal.foodType}</Text>
-                  <Text style={styles.mealMeta}>
-                    {formatTime(meal.timestamp)}
-                    {meal.calories ? ` · ${meal.calories} kcal` : ''}
-                    {meal.portionSize ? ` · ${portionLabel(meal.portionSize)}` : ''}
-                  </Text>
+            <FlatList
+              data={todayMeals}
+              scrollEnabled={false}
+              keyExtractor={(item, index) => item.timestamp || String(index)}
+              renderItem={({ item: meal, index }) => (
+                <View style={[styles.mealItem, index < todayMeals.length - 1 && styles.mealBorder]}>
+                  <Text style={styles.mealEmoji}>{getFoodEmoji(meal.foodType)}</Text>
+                  <View style={styles.mealInfo}>
+                    <Text style={styles.mealName}>{meal.foodType}</Text>
+                    <Text style={styles.mealMeta}>
+                      {formatTime(meal.timestamp)}
+                      {meal.calories ? ` · ${meal.calories} kcal` : ''}
+                      {meal.portionSize ? ` · ${portionLabel(meal.portionSize)}` : ''}
+                    </Text>
+                  </View>
+                  <Text style={styles.mealProtein}>{meal.protein}g</Text>
+                  <TouchableOpacity
+                    style={styles.editBtn}
+                    onPress={() => openEdit(index)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${isTr ? 'Öğünü düzenle' : 'Edit meal'}: ${meal.foodType || ''}`}
+                  >
+                    <Text style={styles.editBtnText}>✏️</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.deleteBtn}
+                    onPress={() => handleDelete(index)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${isTr ? 'Öğünü sil' : 'Delete meal'}: ${meal.foodType || ''}`}
+                  >
+                    <Text style={styles.deleteBtnText}>🗑️</Text>
+                  </TouchableOpacity>
                 </View>
-                <Text style={styles.mealProtein}>{meal.protein}g</Text>
-                <TouchableOpacity style={styles.editBtn} onPress={() => openEdit(index)}>
-                  <Text style={styles.editBtnText}>✏️</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(index)}>
-                  <Text style={styles.deleteBtnText}>🗑️</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
+              )}
+            />
           </Card>
         )}
 
@@ -1195,27 +1248,43 @@ export default function MealAnalysisScreen({ navigation }) {
           </Card>
         ) : (
           <Card padding={0} elevation="md" style={styles.mealsCard}>
-            {exercises.map((ex, index) => (
-              <View key={index} style={[styles.mealItem, index < exercises.length - 1 && styles.mealBorder]}>
-                <Text style={styles.mealEmoji}>{ex.emoji}</Text>
-                <View style={styles.mealInfo}>
-                  <Text style={styles.mealName}>
-                    {EXERCISE_TYPES.find(e => e.id === ex.type)?.[isTr ? 'tr' : 'en'] || ex.name}
-                  </Text>
-                  <Text style={styles.mealMeta}>
-                    {ex.duration} min · {isTr ? (ex.intensity === 'light' ? 'Hafif' : ex.intensity === 'moderate' ? 'Orta' : 'Yoğun') : ex.intensity}
-                    {ex.weightUsed ? ` · ${ex.weightUsed} kg` : ''}
-                  </Text>
-                </View>
-                <Text style={[styles.mealProtein, { color: '#10B981' }]}>{ex.caloriesBurned} kcal</Text>
-                <TouchableOpacity style={styles.editBtn} onPress={() => openEditExercise(index)}>
-                  <Text style={styles.editBtnText}>✏️</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDeleteExercise(index)}>
-                  <Text style={styles.deleteBtnText}>🗑️</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
+            <FlatList
+              data={exercises}
+              scrollEnabled={false}
+              keyExtractor={(item, index) => item.timestamp || String(index)}
+              renderItem={({ item: ex, index }) => {
+                const exName = EXERCISE_TYPES.find(e => e.id === ex.type)?.[isTr ? 'tr' : 'en'] || ex.name;
+                return (
+                  <View style={[styles.mealItem, index < exercises.length - 1 && styles.mealBorder]}>
+                    <Text style={styles.mealEmoji}>{ex.emoji}</Text>
+                    <View style={styles.mealInfo}>
+                      <Text style={styles.mealName}>{exName}</Text>
+                      <Text style={styles.mealMeta}>
+                        {ex.duration} min · {isTr ? (ex.intensity === 'light' ? 'Hafif' : ex.intensity === 'moderate' ? 'Orta' : 'Yoğun') : ex.intensity}
+                        {ex.weightUsed ? ` · ${ex.weightUsed} kg` : ''}
+                      </Text>
+                    </View>
+                    <Text style={[styles.mealProtein, { color: colors.success }]}>{ex.caloriesBurned} kcal</Text>
+                    <TouchableOpacity
+                      style={styles.editBtn}
+                      onPress={() => openEditExercise(index)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${isTr ? 'Egzersizi düzenle' : 'Edit exercise'}: ${exName}`}
+                    >
+                      <Text style={styles.editBtnText}>✏️</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteBtn}
+                      onPress={() => handleDeleteExercise(index)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${isTr ? 'Egzersizi sil' : 'Delete exercise'}: ${exName}`}
+                    >
+                      <Text style={styles.deleteBtnText}>🗑️</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              }}
+            />
           </Card>
         )}
 
@@ -1327,12 +1396,12 @@ export default function MealAnalysisScreen({ navigation }) {
 
             {/* Fat/muscle split bar */}
             <View style={styles.splitBarRow}>
-              <View style={[styles.splitBarSeg, { flex: fatPct, backgroundColor: '#10B981' }]} />
-              <View style={[styles.splitBarSeg, { flex: musclePct, backgroundColor: musclePct >= 50 ? '#EF4444' : '#F59E0B' }]} />
+              <View style={[styles.splitBarSeg, { flex: fatPct, backgroundColor: colors.success }]} />
+              <View style={[styles.splitBarSeg, { flex: musclePct, backgroundColor: musclePct >= 50 ? colors.danger : colors.warning }]} />
             </View>
             <View style={styles.splitBarLegend}>
               <Text style={styles.splitBarLegendText}>🟢 {isTr ? 'Yağ' : 'Fat'} %{fatPct}</Text>
-              <Text style={[styles.splitBarLegendText, { color: musclePct >= 50 ? '#EF4444' : '#D97706' }]}>
+              <Text style={[styles.splitBarLegendText, { color: musclePct >= 50 ? colors.danger : '#D97706' }]}>
                 {musclePct >= 30 ? '⚠️' : '🟠'} {isTr ? 'Kas' : 'Muscle'} %{musclePct}
               </Text>
             </View>
@@ -1370,12 +1439,12 @@ export default function MealAnalysisScreen({ navigation }) {
               {/* 3-path comparison table */}
               <View style={styles.proj3Row}>
                 {/* Path A — current */}
-                <View style={[styles.proj3Col, { backgroundColor: musclePct >= 30 ? '#FEF2F2' : '#FFFBEB' }]}>
+                <View style={[styles.proj3Col, { backgroundColor: musclePct >= 30 ? colors.dangerBg : colors.warningBg }]}>
                   <Text style={styles.proj3ColBadge}>{isTr ? 'Şu Gidişle' : 'As-Is'}</Text>
                   <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
                   <View style={styles.proj3BarWrap}>
                     <View style={[styles.proj3BarFat, { flex: fatPct }]} />
-                    <View style={[styles.proj3BarMuscle, { flex: musclePct, backgroundColor: musclePct >= 30 ? '#EF4444' : '#F59E0B' }]} />
+                    <View style={[styles.proj3BarMuscle, { flex: musclePct, backgroundColor: musclePct >= 30 ? colors.danger : colors.warning }]} />
                   </View>
                   <Text style={styles.proj3Fat}>🟢 {isTr ? 'Yağ baskın' : 'Fat dominant'}</Text>
                   <Text style={[styles.proj3Muscle, { color: musclePct >= 30 ? '#DC2626' : '#D97706' }]}>
@@ -1396,7 +1465,7 @@ export default function MealAnalysisScreen({ navigation }) {
                   <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
                   <View style={styles.proj3BarWrap}>
                     <View style={[styles.proj3BarFat, { flex: 95 }]} />
-                    <View style={[styles.proj3BarMuscle, { flex: 5, backgroundColor: '#10B981' }]} />
+                    <View style={[styles.proj3BarMuscle, { flex: 5, backgroundColor: colors.success }]} />
                   </View>
                   <Text style={styles.proj3Fat}>🟢 {isTr ? 'Yağ baskın' : 'Fat dominant'}</Text>
                   <Text style={[styles.proj3Muscle, { color: '#059669' }]}>✅ {isTr ? 'Kas riski düşük' : 'Muscle risk low'}</Text>
@@ -1404,18 +1473,18 @@ export default function MealAnalysisScreen({ navigation }) {
                 </View>
 
                 {/* Path C — protein + exercise */}
-                <View style={[styles.proj3Col, { backgroundColor: '#EEF2FF', borderWidth: 1.5, borderColor: '#A5B4FC' }]}>
-                  <Text style={[styles.proj3ColBadge, { color: '#3730A3', backgroundColor: '#C7D2FE' }]}>
+                <View style={[styles.proj3Col, { backgroundColor: colors.infoBg, borderWidth: 1.5, borderColor: '#A5B4FC' }]}>
+                  <Text style={[styles.proj3ColBadge, { color: colors.primaryDark, backgroundColor: '#C7D2FE' }]}>
                     {isTr ? '+ Egzersiz' : '+ Exercise'}
                   </Text>
                   <Text style={styles.proj3KgTotal}>~{formatWeight(projected14)}</Text>
                   <View style={styles.proj3BarWrap}>
                     <View style={[styles.proj3BarFat, { flex: 98 }]} />
-                    <View style={[styles.proj3BarMuscle, { flex: 2, backgroundColor: '#6366F1' }]} />
+                    <View style={[styles.proj3BarMuscle, { flex: 2, backgroundColor: colors.primaryLight }]} />
                   </View>
                   <Text style={styles.proj3Fat}>🟢 {isTr ? 'Yağ baskın' : 'Fat dominant'}</Text>
-                  <Text style={[styles.proj3Muscle, { color: '#4F46E5' }]}>💪 {isTr ? 'Kas riski minimum' : 'Muscle risk minimal'}</Text>
-                  <Text style={[styles.proj3RiskRange, { color: '#4F46E5' }]}>%2 {isTr ? 'kas olabilir' : 'may be muscle'}</Text>
+                  <Text style={[styles.proj3Muscle, { color: colors.primary }]}>💪 {isTr ? 'Kas riski minimum' : 'Muscle risk minimal'}</Text>
+                  <Text style={[styles.proj3RiskRange, { color: colors.primary }]}>%2 {isTr ? 'kas olabilir' : 'may be muscle'}</Text>
                 </View>
               </View>
 
@@ -1584,6 +1653,7 @@ export default function MealAnalysisScreen({ navigation }) {
         style={styles.fab}
         onPress={openManualAdd}
         activeOpacity={0.85}
+        accessibilityRole="button"
         accessibilityLabel={isTr ? 'Öğün ekle' : 'Add meal'}
       >
         <Text style={styles.fabIcon}>＋</Text>
@@ -1615,7 +1685,12 @@ export default function MealAnalysisScreen({ navigation }) {
                   </Text>
                 </View>
               </View>
-              <TouchableOpacity onPress={() => setChatVisible(false)} style={styles.chatClose}>
+              <TouchableOpacity
+                onPress={() => setChatVisible(false)}
+                style={styles.chatClose}
+                accessibilityRole="button"
+                accessibilityLabel={isTr ? 'Sohbeti kapat' : 'Close chat'}
+              >
                 <Text style={styles.chatCloseText}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -1641,7 +1716,7 @@ export default function MealAnalysisScreen({ navigation }) {
                 <View style={[styles.bubble, styles.bubbleCoach]}>
                   <Text style={styles.bubbleEmoji}>🤖</Text>
                   <View style={styles.bubbleTextCoach}>
-                    <ActivityIndicator size="small" color="#4F46E5" />
+                    <ActivityIndicator size="small" color={colors.primary} />
                   </View>
                 </View>
               )}
@@ -1661,7 +1736,13 @@ export default function MealAnalysisScreen({ navigation }) {
                   "Can I lose fat without losing muscle?",
                   "Suggest a dinner for tonight",
                 ]).map((q, i) => (
-                  <TouchableOpacity key={i} style={styles.quickPrompt} onPress={() => { setChatInput(q); }}>
+                  <TouchableOpacity
+                    key={i}
+                    style={styles.quickPrompt}
+                    onPress={() => { setChatInput(q); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={q}
+                  >
                     <Text style={styles.quickPromptText}>{q}</Text>
                   </TouchableOpacity>
                 ))}
@@ -1673,7 +1754,7 @@ export default function MealAnalysisScreen({ navigation }) {
               <TextInput
                 style={styles.chatInput}
                 placeholder={isTr ? 'Koçuna bir şey sor...' : 'Ask your coach anything...'}
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.outline}
                 value={chatInput}
                 onChangeText={setChatInput}
                 multiline
@@ -1683,6 +1764,8 @@ export default function MealAnalysisScreen({ navigation }) {
                 style={[styles.sendBtn, (!chatInput.trim() || chatLoading) && styles.sendBtnDisabled]}
                 onPress={handleSendChat}
                 disabled={!chatInput.trim() || chatLoading}
+                accessibilityRole="button"
+                accessibilityLabel={isTr ? 'Mesaj gönder' : 'Send message'}
               >
                 <Text style={styles.sendBtnText}>➤</Text>
               </TouchableOpacity>
@@ -1711,6 +1794,9 @@ export default function MealAnalysisScreen({ navigation }) {
                     style={[styles.exerciseTypeBtn, exerciseType === ex.id && styles.exerciseTypeBtnActive]}
                     onPress={() => setExerciseType(ex.id)}
                     activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: exerciseType === ex.id }}
+                    accessibilityLabel={isTr ? ex.tr : ex.en}
                   >
                     <Text style={styles.exerciseTypeEmoji}>{ex.emoji}</Text>
                     <Text style={[styles.exerciseTypeName, exerciseType === ex.id && styles.exerciseTypeNameActive]}>
@@ -1729,6 +1815,9 @@ export default function MealAnalysisScreen({ navigation }) {
                     style={[styles.portionPill, exerciseDuration === d && styles.portionPillActive]}
                     onPress={() => setExerciseDuration(d)}
                     activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: exerciseDuration === d }}
+                    accessibilityLabel={`${d} ${isTr ? 'dakika' : 'minutes'}`}
                   >
                     <Text style={[styles.portionPillText, exerciseDuration === d && styles.portionPillTextActive]}>{d}</Text>
                   </TouchableOpacity>
@@ -1744,6 +1833,9 @@ export default function MealAnalysisScreen({ navigation }) {
                     style={[styles.portionPill, exerciseIntensity === int.id && styles.portionPillActive, { flex: 1 }]}
                     onPress={() => setExerciseIntensity(int.id)}
                     activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: exerciseIntensity === int.id }}
+                    accessibilityLabel={isTr ? int.tr : int.en}
                   >
                     <Text style={[styles.portionPillText, exerciseIntensity === int.id && styles.portionPillTextActive]}>
                       {isTr ? int.tr : int.en}
@@ -1757,7 +1849,7 @@ export default function MealAnalysisScreen({ navigation }) {
                 <View style={styles.calPreview}>
                   <Text style={styles.calPreviewText}>
                     {isTr ? '🔥 Tahmini yakılan kalori: ' : '🔥 Est. calories burned: '}
-                    <Text style={{ fontWeight: '800', color: '#10B981' }}>
+                    <Text style={{ fontWeight: '800', color: colors.success, fontFamily: fontFamily.headingBold }}>
                       {calcCalories(
                         EXERCISE_TYPES.find(e => e.id === exerciseType)?.met || 5,
                         exerciseDuration,
@@ -1766,7 +1858,7 @@ export default function MealAnalysisScreen({ navigation }) {
                       )} kcal
                     </Text>
                   </Text>
-                  <Text style={{ fontSize: 11, color: '#6B7280', marginTop: 4, textAlign: 'center' }}>
+                  <Text style={{ fontSize: 11, color: colors.outline, marginTop: 4, textAlign: 'center', fontFamily: fontFamily.body }}>
                     {isTr
                       ? `MET formülü · ${profile?.weight || 75} kg baz alındı`
                       : `MET formula · based on ${profile?.weight || 75} kg`}
@@ -1775,10 +1867,20 @@ export default function MealAnalysisScreen({ navigation }) {
               )}
 
               <View style={styles.modalButtons}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => { setExerciseModalVisible(false); setEditExerciseIndex(null); }}>
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => { setExerciseModalVisible(false); setEditExerciseIndex(null); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('cancel')}
+                >
                   <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.saveBtn} onPress={saveExercise}>
+                <TouchableOpacity
+                  style={styles.saveBtn}
+                  onPress={saveExercise}
+                  accessibilityRole="button"
+                  accessibilityLabel={isTr ? 'Egzersizi kaydet' : 'Save exercise'}
+                >
                   <Text style={styles.saveBtnText}>{isTr ? 'Kaydet' : 'Save'}</Text>
                 </TouchableOpacity>
               </View>
@@ -1806,7 +1908,7 @@ export default function MealAnalysisScreen({ navigation }) {
                 placeholder={isTr
                   ? 'örn. 2 haşlanmış yumurta ve 1 dilim tam tahıllı ekmek, yanında domates...'
                   : 'e.g. 2 boiled eggs and a slice of whole wheat bread, with tomatoes...'}
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.outline}
                 value={manualFood}
                 onChangeText={text => { setManualFood(text); setManualResult(null); }}
                 multiline
@@ -1824,6 +1926,9 @@ export default function MealAnalysisScreen({ navigation }) {
                     style={[styles.portionPill, manualPortion === p && styles.portionPillActive]}
                     onPress={() => setManualPortion(p)}
                     activeOpacity={0.8}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: manualPortion === p }}
+                    accessibilityLabel={portionLabel(p)}
                   >
                     <Text style={[styles.portionPillText, manualPortion === p && styles.portionPillTextActive]}>
                       {p === 'Small' ? (isTr ? '🤏 Küçük' : '🤏 Small')
@@ -1840,9 +1945,11 @@ export default function MealAnalysisScreen({ navigation }) {
                   style={[styles.analyzeManualBtn, manualAnalyzing && { opacity: 0.6 }]}
                   onPress={handleManualAnalyze}
                   disabled={manualAnalyzing}
+                  accessibilityRole="button"
+                  accessibilityLabel={isTr ? 'Yapay zeka ile analiz et' : 'Analyze with AI'}
                 >
                   {manualAnalyzing
-                    ? <ActivityIndicator color="#fff" size="small" />
+                    ? <ActivityIndicator color={colors.white} size="small" />
                     : <Text style={styles.analyzeManualBtnText}>🤖 {isTr ? 'Yapay Zeka ile Analiz Et' : 'Analyze with AI'}</Text>
                   }
                 </TouchableOpacity>
@@ -1879,11 +1986,21 @@ export default function MealAnalysisScreen({ navigation }) {
               )}
 
               <View style={styles.modalButtons}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => { setManualVisible(false); setManualResult(null); setManualFood(''); }}>
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => { setManualVisible(false); setManualResult(null); setManualFood(''); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('cancel')}
+                >
                   <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
                 </TouchableOpacity>
                 {manualResult && (
-                  <TouchableOpacity style={styles.saveBtn} onPress={handleManualSave}>
+                  <TouchableOpacity
+                    style={styles.saveBtn}
+                    onPress={handleManualSave}
+                    accessibilityRole="button"
+                    accessibilityLabel={isTr ? 'Öğünü kaydet' : 'Save meal'}
+                  >
                     <Text style={styles.saveBtnText}>{t('save')}</Text>
                   </TouchableOpacity>
                 )}
@@ -2186,7 +2303,7 @@ const styles = StyleSheet.create({
   },
   balanceResultValue: { fontSize: 17, fontWeight: '900', fontFamily: fontFamily.headingBold },
   balanceNote: { fontSize: 13, fontWeight: '600', textAlign: 'center', marginBottom: 6, fontFamily: fontFamily.bodySemiBold },
-  balanceBmrNote: { fontSize: 10, color: '#9CA3AF', textAlign: 'center', fontFamily: fontFamily.body },
+  balanceBmrNote: { fontSize: 10, color: colors.outline, textAlign: 'center', fontFamily: fontFamily.body },
 
   // Apple Watch / HealthKit card
   watchCard: { marginBottom: spacing.stackLg },
@@ -2276,7 +2393,7 @@ const styles = StyleSheet.create({
   proj3Fat: { fontSize: 11, fontWeight: '600', color: '#059669', textAlign: 'center', fontFamily: fontFamily.bodySemiBold },
   proj3Muscle: { fontSize: 11, fontWeight: '700', textAlign: 'center', marginTop: 2, fontFamily: fontFamily.bodySemiBold },
   proj3RiskRange: { fontSize: 10, fontWeight: '500', textAlign: 'center', marginTop: 1, fontFamily: fontFamily.body },
-  projDisclaimer: { marginTop: 10, fontSize: 11, color: '#9CA3AF', lineHeight: 15, textAlign: 'center', fontStyle: 'italic', fontFamily: fontFamily.body },
+  projDisclaimer: { marginTop: 10, fontSize: 11, color: colors.outline, lineHeight: 15, textAlign: 'center', fontStyle: 'italic', fontFamily: fontFamily.body },
 
   // ── Weekly Report hero ──
   weeklyHero: { marginBottom: spacing.stackMd, alignItems: 'stretch' },

@@ -11,6 +11,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  FlatList,
   ActivityIndicator,
   TextInput,
   KeyboardAvoidingView,
@@ -29,7 +30,7 @@ import {
   getSymptoms,
 } from '../services/healthLogService';
 
-import { colors, typography, spacing, radii } from '../theme';
+import { colors, typography, spacing, radii, fontFamily } from '../theme';
 import {
   Screen,
   Card,
@@ -320,6 +321,7 @@ export default function HealthLogScreen({ navigation }) {
                     style={[styles.input, styles.cmInput]}
                     keyboardType="decimal-pad"
                     returnKeyType="done"
+                    accessibilityLabel={`${isTr ? f.tr : f.en} ${isTr ? 'santimetre' : 'centimeters'}`}
                   />
                   <View style={styles.unitPill}>
                     <Text style={styles.unitPillText}>cm</Text>
@@ -333,6 +335,8 @@ export default function HealthLogScreen({ navigation }) {
               onPress={handleSaveMeasurement}
               loading={savingMeasurement}
               style={styles.saveBtn}
+              accessibilityRole="button"
+              accessibilityLabel={isTr ? 'Vücut ölçümünü kaydet' : 'Save body measurement'}
             />
           </Card>
 
@@ -355,43 +359,47 @@ export default function HealthLogScreen({ navigation }) {
             </Card>
           ) : (
             <Card contentStyle={styles.trendsInner}>
-              {trends.map((t, i) => {
-                const isUp = t.delta != null && t.delta > 0;
-                const isDown = t.delta != null && t.delta < 0;
-                return (
-                  <ListRow
-                    key={t.field.key}
-                    icon={<Text style={styles.rowEmoji}>{t.field.emoji}</Text>}
-                    label={isTr ? t.field.tr : t.field.en}
-                    subtitle={
-                      isTr
-                        ? `Güncel ${t.latest.value} cm · ${fmtDate(t.latest.date)}`
-                        : `Now ${t.latest.value} cm · ${fmtDate(t.latest.date)}`
-                    }
-                    right={
-                      t.delta == null ? (
-                        <Badge
-                          label={isTr ? 'İlk kayıt' : 'First entry'}
-                          tone="neutral"
-                        />
-                      ) : (
-                        <Text
-                          style={[
-                            styles.delta,
-                            isDown && styles.deltaDown,
-                            isUp && styles.deltaUp,
-                          ]}
-                        >
-                          {t.delta === 0
-                            ? '±0 cm'
-                            : `${isDown ? '▼ ' : '▲ +'}${Math.abs(t.delta).toFixed(1)} cm`}
-                        </Text>
-                      )
-                    }
-                    divider={i < trends.length - 1}
-                  />
-                );
-              })}
+              <FlatList
+                data={trends}
+                scrollEnabled={false}
+                keyExtractor={(t) => t.field.key}
+                renderItem={({ item: t, index: i }) => {
+                  const isUp = t.delta != null && t.delta > 0;
+                  const isDown = t.delta != null && t.delta < 0;
+                  return (
+                    <ListRow
+                      icon={<Text style={styles.rowEmoji}>{t.field.emoji}</Text>}
+                      label={isTr ? t.field.tr : t.field.en}
+                      subtitle={
+                        isTr
+                          ? `Güncel ${t.latest.value} cm · ${fmtDate(t.latest.date)}`
+                          : `Now ${t.latest.value} cm · ${fmtDate(t.latest.date)}`
+                      }
+                      right={
+                        t.delta == null ? (
+                          <Badge
+                            label={isTr ? 'İlk kayıt' : 'First entry'}
+                            tone="neutral"
+                          />
+                        ) : (
+                          <Text
+                            style={[
+                              styles.delta,
+                              isDown && styles.deltaDown,
+                              isUp && styles.deltaUp,
+                            ]}
+                          >
+                            {t.delta === 0
+                              ? '±0 cm'
+                              : `${isDown ? '▼ ' : '▲ +'}${Math.abs(t.delta).toFixed(1)} cm`}
+                          </Text>
+                        )
+                      }
+                      divider={i < trends.length - 1}
+                    />
+                  );
+                }}
+              />
             </Card>
           )}
 
@@ -441,6 +449,8 @@ export default function HealthLogScreen({ navigation }) {
               onPress={handleLogSymptom}
               loading={loggingSymptom}
               style={styles.saveBtn}
+              accessibilityRole="button"
+              accessibilityLabel={isTr ? 'Belirtiyi günlüğe kaydet' : 'Log symptom to journal'}
             />
           </Card>
 
@@ -470,25 +480,29 @@ export default function HealthLogScreen({ navigation }) {
             </Card>
           ) : (
             <Card contentStyle={styles.historyInner}>
-              {symptoms.map((entry, i) => {
-                const meta = symptomMeta(entry.type);
-                const sev = severityMeta(entry.severity);
-                return (
-                  <ListRow
-                    key={`${entry.date}-${entry.type}-${i}`}
-                    icon={<Text style={styles.rowEmoji}>{meta.emoji}</Text>}
-                    label={isTr ? meta.tr : meta.en}
-                    subtitle={fmtDate(entry.date)}
-                    right={
-                      <Badge
-                        label={isTr ? sev.tr : sev.en}
-                        tone={sev.tone}
-                      />
-                    }
-                    divider={i < symptoms.length - 1}
-                  />
-                );
-              })}
+              <FlatList
+                data={symptoms}
+                scrollEnabled={false}
+                keyExtractor={(entry, i) => `${entry.date}-${entry.type}-${i}`}
+                renderItem={({ item: entry, index: i }) => {
+                  const meta = symptomMeta(entry.type);
+                  const sev = severityMeta(entry.severity);
+                  return (
+                    <ListRow
+                      icon={<Text style={styles.rowEmoji}>{meta.emoji}</Text>}
+                      label={isTr ? meta.tr : meta.en}
+                      subtitle={fmtDate(entry.date)}
+                      right={
+                        <Badge
+                          label={isTr ? sev.tr : sev.en}
+                          tone={sev.tone}
+                        />
+                      }
+                      divider={i < symptoms.length - 1}
+                    />
+                  );
+                }}
+              />
             </Card>
           )}
 
@@ -577,14 +591,14 @@ const styles = StyleSheet.create({
   // ── Trends / history rows ──
   trendsInner: {},
   historyInner: {},
-  rowEmoji: { fontSize: 20 },
+  rowEmoji: { fontSize: 20, fontFamily: fontFamily.body },
   delta: { ...typography.labelMd, color: colors.onSurfaceVariant },
   deltaDown: { color: colors.success },
   deltaUp: { color: colors.warning },
 
   // ── Empty ──
   emptyInner: { alignItems: 'center' },
-  emptyEmoji: { fontSize: 44, marginBottom: spacing.stackSm },
+  emptyEmoji: { fontSize: 44, marginBottom: spacing.stackSm, fontFamily: fontFamily.body },
   emptyTitle: {
     ...typography.headlineMd,
     fontSize: 18,

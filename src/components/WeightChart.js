@@ -8,7 +8,7 @@ import Svg, {
   Stop,
   Line,
 } from 'react-native-svg';
-import { colors, fontFamily, typography, spacing, radii, shadow } from '../theme';
+import { fontFamily, typography, spacing, radii, useTheme } from '../theme';
 
 /**
  * WeightChart — premium custom SVG line chart.
@@ -45,11 +45,22 @@ export default function WeightChart({
   language = 'en',
 }) {
   const isTr = language === 'tr';
+  const { colors, shadow } = useTheme();
+  const styles = React.useMemo(() => makeStyles(colors, shadow), [colors, shadow]);
 
   // Empty / insufficient state — graceful & on-theme.
   if (!data || data.length < 2) {
     return (
-      <View style={[styles.card, styles.empty, { minHeight: height }]}>
+      <View
+        style={[styles.card, styles.empty, { minHeight: height }]}
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel={
+          isTr
+            ? 'Kilo eğilim grafiği. Henüz yeterli veri yok; grafiği görmek için en az iki ölçüm ekleyin.'
+            : 'Weight trend chart. Not enough data yet; log at least two weigh-ins to see your trend.'
+        }
+      >
         <View style={styles.emptyIcon}>
           <Svg width={28} height={28} viewBox="0 0 24 24">
             <Path
@@ -139,10 +150,43 @@ export default function WeightChart({
   const yMaxGuide = yFor(maxW);
   const yMinGuide = yFor(minW);
 
+  // Accessibility: describe the whole chart as a single readable summary so
+  // VoiceOver/TalkBack users get the trend without reading raw SVG nodes.
+  const trendWord = losing
+    ? isTr
+      ? 'düşüş'
+      : 'downward'
+    : delta > 0
+      ? isTr
+        ? 'yükseliş'
+        : 'upward'
+      : isTr
+        ? 'sabit'
+        : 'flat';
+  const a11yChartLabel = isTr
+    ? `Kilo eğilim grafiği. ${n} ölçüm. Güncel ağırlık ${fmtVal(lastWeight)} ${weightUnit}. ` +
+      `Başlangıçtan değişim ${delta > 0 ? '+' : delta < 0 ? '−' : ''}${fmtVal(
+        Math.abs(delta)
+      )} ${weightUnit}. En düşük ${fmtVal(minW)}, en yüksek ${fmtVal(
+        maxW
+      )} ${weightUnit}. Genel eğilim: ${trendWord}.`
+    : `Weight trend chart. ${n} entries. Current weight ${fmtVal(
+        lastWeight
+      )} ${weightUnit}. Change since start ${
+        delta > 0 ? '+' : delta < 0 ? '−' : ''
+      }${fmtVal(Math.abs(delta))} ${weightUnit}. Lowest ${fmtVal(
+        minW
+      )}, highest ${fmtVal(maxW)} ${weightUnit}. Overall trend: ${trendWord}.`;
+
   return (
-    <View style={styles.card}>
+    <View
+      style={styles.card}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={a11yChartLabel}
+    >
       {/* Header: current value + change badge */}
-      <View style={styles.header}>
+      <View style={styles.header} importantForAccessibility="no-hide-descendants">
         <View>
           <Text style={styles.headerLabel}>
             {isTr ? 'Güncel ağırlık' : 'Current weight'}
@@ -171,7 +215,7 @@ export default function WeightChart({
       </View>
 
       {/* Chart */}
-      <View style={{ height }}>
+      <View style={{ height }} importantForAccessibility="no-hide-descendants">
         <Svg width="100%" height="100%" viewBox={`0 0 ${VB_W} ${VB_H}`}>
           <Defs>
             <SvgLinearGradient id="wcArea" x1="0" y1="0" x2="0" y2="1">
@@ -244,7 +288,7 @@ export default function WeightChart({
       </View>
 
       {/* Date labels */}
-      <View style={styles.dateRow}>
+      <View style={styles.dateRow} importantForAccessibility="no-hide-descendants">
         {dateLabels.map((idx) => {
           const xRatio = padL + (n === 1 ? plotW / 2 : (idx / (n - 1)) * plotW);
           const leftPct = (xRatio / VB_W) * 100;
@@ -272,7 +316,8 @@ export default function WeightChart({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors, shadow) =>
+  StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     borderRadius: radii.card,
@@ -357,4 +402,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: spacing.stackMd,
   },
-});
+  });

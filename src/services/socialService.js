@@ -36,7 +36,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const POSTS_KEY = 'social_posts_v1';
 const BLOCKED_KEY = 'social_blocked_users_v1';
 const REPORTED_KEY = 'social_reported_posts_v1';
-const SEED_FLAG_KEY = 'social_seeded_v1';
 
 // Local pseudo-identity for "me" liking posts. The real author id comes from the
 // caller via createPost (see SocialScreen passing user.uid through the post).
@@ -209,120 +208,12 @@ export async function getBlockedUsers() {
   return readJSON(BLOCKED_KEY, []);
 }
 
-/**
- * seedIfEmpty — on first run, populate ~8 realistic bilingual sample posts so
- * the community feed looks alive. Runs at most once (guarded by a flag).
- * @param {string} language  'tr' | 'en'  (chooses which localized copy to seed)
- * @returns {Promise<void>}
- */
-export async function seedIfEmpty(language) {
-  const alreadySeeded = await readJSON(SEED_FLAG_KEY, false);
-  const existing = await getAllPostsRaw();
-  if (alreadySeeded || existing.length > 0) return;
-
-  const isTr = language === 'tr';
-  const now = Date.now();
-  const hrs = (h) => new Date(now - h * 60 * 60 * 1000).toISOString();
-
-  // Bilingual sample community members + posts.
-  const samples = [
-    {
-      authorId: 'seed_ayse',
-      authorName: isTr ? 'Ayşe K.' : 'Emma R.',
-      type: 'injection',
-      text: isTr
-        ? '3. haftamdayım, ilk doz bulantısı geçti. Enjeksiyonu uyluk yerine karın bölgesine yapınca çok daha rahat oldu. Sabırlı olun!'
-        : "Week 3 here, the first-dose nausea has faded. Switching the shot from my thigh to my belly made it way more comfortable. Hang in there!",
-      likes: 24,
-      likedByMe: false,
-      createdAt: hrs(2),
-    },
-    {
-      authorId: 'seed_mehmet',
-      authorName: isTr ? 'Mehmet T.' : 'James L.',
-      type: 'meal',
-      text: isTr
-        ? 'Bugünkü kahvaltım: yumurta, lor peyniri ve avokado. Protein dolu ve beni öğlene kadar tok tutuyor.'
-        : 'Breakfast today: eggs, cottage cheese and avocado. Packed with protein and keeps me full until lunch.',
-      protein: 32,
-      likes: 41,
-      likedByMe: false,
-      createdAt: hrs(5),
-    },
-    {
-      authorId: 'seed_zeynep',
-      authorName: isTr ? 'Zeynep A.' : 'Sofia M.',
-      type: 'injection',
-      text: isTr
-        ? 'Dozumu 0.5mg’a çıkardım. İştahım belirgin şekilde azaldı ama bol su içmeyi unutmuyorum. Yan etki yönetimi her şey!'
-        : 'Bumped my dose to 0.5mg. Appetite dropped noticeably, but I make sure to drink plenty of water. Managing side effects is everything!',
-      likes: 18,
-      likedByMe: false,
-      createdAt: hrs(9),
-    },
-    {
-      authorId: 'seed_can',
-      authorName: isTr ? 'Can D.' : 'Noah P.',
-      type: 'meal',
-      text: isTr
-        ? 'Akşam yemeği: ızgara tavuk, kinoa ve brokoli. Küçük porsiyonlar ama yeterince doyurucu.'
-        : 'Dinner: grilled chicken, quinoa and broccoli. Small portions but genuinely satisfying.',
-      protein: 45,
-      likes: 29,
-      likedByMe: false,
-      createdAt: hrs(14),
-    },
-    {
-      authorId: 'seed_elif',
-      authorName: isTr ? 'Elif S.' : 'Olivia W.',
-      type: 'general',
-      text: isTr
-        ? '2 ayda 6 kilo verdim ve enerjim çok daha iyi. Bu topluluğun desteği motivasyonumu yüksek tutuyor, teşekkürler!'
-        : "Down 13 lbs in 2 months and my energy is so much better. This community's support keeps my motivation high — thank you all!",
-      likes: 57,
-      likedByMe: false,
-      createdAt: hrs(20),
-    },
-    {
-      authorId: 'seed_burak',
-      authorName: isTr ? 'Burak Y.' : 'Liam H.',
-      type: 'injection',
-      text: isTr
-        ? 'İğne korkusu olanlara: enjeksiyon kalemini buzdolabından çıkarıp 20 dk oda sıcaklığında beklettim, neredeyse hiç acımadı.'
-        : 'For anyone scared of needles: I let the pen sit at room temperature for 20 min after taking it out of the fridge — barely felt a thing.',
-      likes: 33,
-      likedByMe: false,
-      createdAt: hrs(28),
-    },
-    {
-      authorId: 'seed_deniz',
-      authorName: isTr ? 'Deniz Ö.' : 'Ava C.',
-      type: 'meal',
-      text: isTr
-        ? 'Protein hedefimi tutturmak için Yunan yoğurdu + chia tohumu ataştırıyorum. Basit ve etkili.'
-        : 'To hit my protein goal I snack on Greek yogurt + chia seeds. Simple and effective.',
-      protein: 20,
-      likes: 22,
-      likedByMe: false,
-      createdAt: hrs(36),
-    },
-    {
-      authorId: 'seed_selin',
-      authorName: isTr ? 'Selin B.' : 'Mia F.',
-      type: 'general',
-      text: isTr
-        ? 'Platoya girdim ve biraz moralim bozulmuştu. Doktorumla konuştum, yürüyüşü artırdım ve tekrar hareket başladı. Pes etmeyin!'
-        : "Hit a plateau and felt discouraged. Talked to my doctor, upped my daily walks, and the scale started moving again. Don't give up!",
-      likes: 48,
-      likedByMe: false,
-      createdAt: hrs(46),
-    },
-  ];
-
-  const seeded = samples.map((s) => ({ id: genId(), ...s }));
-  await writeJSON(POSTS_KEY, seeded);
-  await writeJSON(SEED_FLAG_KEY, true);
-}
+// NOTE(store-compliance / App Store 2.1, report D1):
+// The community feed is genuine user-generated content ONLY. There is NO seeding
+// of fake/sample posts — nothing may be presented as other users' real content
+// when it isn't. A new user sees a proper empty state until real posts exist.
+// When a real backend is wired in (see SWAPPABLE BOUNDARY above), getFeed will
+// return actual posts authored by real users; the contract stays unchanged.
 
 export default {
   getFeed,
@@ -331,5 +222,4 @@ export default {
   reportPost,
   blockUser,
   getBlockedUsers,
-  seedIfEmpty,
 };

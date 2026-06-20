@@ -26,6 +26,7 @@ import CoachMessage from '../components/CoachMessage';
 import { useGamification } from '../context/GamificationContext';
 import FeatureTour from '../components/FeatureTour';
 import { sendCoachMessage } from '../services/coachChatService';
+import AIConsentModal from '../components/AIConsentModal';
 import { scheduleDailyMotivation, schedulePersonalizedNotifications } from '../services/notificationService';
 import { Pedometer } from 'expo-sensors';
 
@@ -338,6 +339,7 @@ export default function DashboardScreen({ navigation }) {
 
   // Coach chat
   const [chatVisible, setChatVisible] = useState(false);
+  const [consentVisible, setConsentVisible] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
@@ -642,14 +644,28 @@ export default function DashboardScreen({ navigation }) {
     }
   }
 
-  function openCoachChat() {
+  function showChat() {
     setChatMessages([{
       role: 'assistant',
       content: isTr
-        ? `Merhaba! Ben GLP-1 Coach rehberinim 💪 Protein takibi ve fitness hedeflerin için sana nasıl yardımcı olabilirim?`
-        : `Hey! I'm your GLP-1 Coach Wellness Guide 💪 How can I help you with your protein tracking and fitness goals today?`,
+        ? `Merhaba! Ben GLP-1 Coach rehberinim 💪 Protein takibi ve fitness hedeflerin için sana nasıl yardımcı olabilirim?\n\nℹ️ Bu bir yaşam tarzı rehberidir, tıbbi tavsiye değildir. Yanıtlar tahminidir; sağlık kararları için doktoruna danış. Mesajların analiz için güvenli bir sunucuya gönderilir.`
+        : `Hey! I'm your GLP-1 Coach Wellness Guide 💪 How can I help with your protein tracking and fitness goals today?\n\nℹ️ This is lifestyle guidance, not medical advice. Replies are estimates; consult your doctor for health decisions. Your messages are sent to a secure server for analysis.`,
     }]);
     setChatVisible(true);
+  }
+
+  // Gate AI coach behind one-time consent (health data leaves the device).
+  async function openCoachChat() {
+    try {
+      const consent = await AsyncStorage.getItem('ai_consent_given');
+      if (consent === 'true') {
+        showChat();
+      } else {
+        setConsentVisible(true);
+      }
+    } catch {
+      setConsentVisible(true);
+    }
   }
 
   async function handleSendChat() {
@@ -776,7 +792,7 @@ export default function DashboardScreen({ navigation }) {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4F46E5" />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
         {/* Medical disclaimer banner */}
@@ -793,7 +809,18 @@ export default function DashboardScreen({ navigation }) {
           <Text style={styles.heroGreeting}>
             {greeting}, {displayName} 👋
           </Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Weight')} activeOpacity={0.8}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Weight')}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={
+              currentWeight != null
+                ? (isTr
+                    ? `Mevcut kilo ${formatWeight(currentWeight)}. Kilo geçmişi ve grafiği aç.`
+                    : `Current weight ${formatWeight(currentWeight)}. Open weight history and chart.`)
+                : (isTr ? 'Kilo geçmişi ve grafiği aç' : 'Open weight history and chart')
+            }
+          >
             {currentWeight != null ? (
               <Text style={styles.heroWeight}>{formatWeight(currentWeight)}</Text>
             ) : (
@@ -829,16 +856,20 @@ export default function DashboardScreen({ navigation }) {
               style={styles.heroActionBtn}
               onPress={openCoachChat}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={isTr ? 'AI Koç ile sohbet et' : 'Chat with AI Coach'}
             >
-              <Text style={styles.heroActionEmoji}>🤖</Text>
+              <Text style={styles.heroActionEmoji} accessibilityElementsHidden importantForAccessibility="no">🤖</Text>
               <Text style={styles.heroActionText}>{isTr ? 'AI Koç' : 'AI Coach'}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.heroActionBtn, styles.heroActionBtnSolid]}
               onPress={() => setLogWeightVisible(true)}
               activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={isTr ? 'Kilo ekle' : 'Log weight'}
             >
-              <Text style={styles.heroActionEmoji}>＋</Text>
+              <Text style={styles.heroActionEmoji} accessibilityElementsHidden importantForAccessibility="no">＋</Text>
               <Text style={[styles.heroActionText, styles.heroActionTextSolid]}>
                 {isTr ? 'Kilo Ekle' : 'Log Weight'}
               </Text>
@@ -848,7 +879,16 @@ export default function DashboardScreen({ navigation }) {
 
         {/* ── Compact Next Injection Card (only when actively using medication) ── */}
         {medLoaded && medActive && (
-          <Card onPress={goToMedication} style={styles.medCard}>
+          <Card
+            onPress={goToMedication}
+            style={styles.medCard}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isTr
+                ? `Sonraki enjeksiyon${nextInjectionLabel ? `: ${nextInjectionLabel}` : ''}. İlaç takibini aç.`
+                : `Next injection${nextInjectionLabel ? `: ${nextInjectionLabel}` : ''}. Open medication tracking.`
+            }
+          >
             <View style={styles.medRow}>
               <View style={[styles.medIconCircle, { backgroundColor: semantic[medTone].bg }]}>
                 <Text style={styles.medIconEmoji}>💉</Text>
@@ -957,9 +997,26 @@ export default function DashboardScreen({ navigation }) {
       </ScrollView>
 
       {/* ── Coach Chat Modal ── */}
+      <AIConsentModal
+        visible={consentVisible}
+        language={language}
+        onAccept={async () => {
+          try { await AsyncStorage.setItem('ai_consent_given', 'true'); } catch {}
+          setConsentVisible(false);
+          showChat();
+        }}
+        onDecline={() => setConsentVisible(false)}
+      />
+
       <Modal visible={chatVisible} animationType="slide" transparent onRequestClose={() => setChatVisible(false)}>
         <View style={styles.chatOverlay}>
-          <TouchableOpacity style={styles.chatBackdrop} onPress={() => setChatVisible(false)} activeOpacity={1} />
+          <TouchableOpacity
+            style={styles.chatBackdrop}
+            onPress={() => setChatVisible(false)}
+            activeOpacity={1}
+            accessibilityRole="button"
+            accessibilityLabel={isTr ? 'Sohbeti kapat' : 'Close chat'}
+          />
           <View style={[styles.chatSheet, {
             height: keyboardHeight > 0
               ? Math.min(screenHeight * 0.70, screenHeight - keyboardHeight - 50)
@@ -979,7 +1036,12 @@ export default function DashboardScreen({ navigation }) {
                   </Text>
                 </View>
               </View>
-              <TouchableOpacity onPress={() => setChatVisible(false)} style={styles.chatClose}>
+              <TouchableOpacity
+                onPress={() => setChatVisible(false)}
+                style={styles.chatClose}
+                accessibilityRole="button"
+                accessibilityLabel={isTr ? 'Sohbeti kapat' : 'Close chat'}
+              >
                 <Text style={styles.chatCloseText}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -1003,7 +1065,7 @@ export default function DashboardScreen({ navigation }) {
                 <View style={[styles.bubble, styles.bubbleCoach]}>
                   <Text style={styles.bubbleEmoji}>🤖</Text>
                   <View style={styles.bubbleTextCoach}>
-                    <ActivityIndicator size="small" color="#4F46E5" />
+                    <ActivityIndicator size="small" color={colors.primary} />
                   </View>
                 </View>
               )}
@@ -1019,7 +1081,13 @@ export default function DashboardScreen({ navigation }) {
                   "What should I eat for more protein?",
                   "Can I lose fat without losing muscle?",
                 ]).map((q, i) => (
-                  <TouchableOpacity key={i} style={styles.quickPrompt} onPress={() => setChatInput(q)}>
+                  <TouchableOpacity
+                    key={i}
+                    style={styles.quickPrompt}
+                    onPress={() => setChatInput(q)}
+                    accessibilityRole="button"
+                    accessibilityLabel={q}
+                  >
                     <Text style={styles.quickPromptText}>{q}</Text>
                   </TouchableOpacity>
                 ))}
@@ -1029,7 +1097,8 @@ export default function DashboardScreen({ navigation }) {
               <TextInput
                 style={styles.chatInput}
                 placeholder={isTr ? 'Koçuna bir şey sor...' : 'Ask your coach anything...'}
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.outline}
+                accessibilityLabel={isTr ? 'Mesaj kutusu' : 'Message input'}
                 value={chatInput}
                 onChangeText={setChatInput}
                 multiline
@@ -1039,8 +1108,11 @@ export default function DashboardScreen({ navigation }) {
                 style={[styles.sendBtn, (!chatInput.trim() || chatLoading) && styles.sendBtnDisabled]}
                 onPress={handleSendChat}
                 disabled={!chatInput.trim() || chatLoading}
+                accessibilityRole="button"
+                accessibilityLabel={isTr ? 'Mesaj gönder' : 'Send message'}
+                accessibilityState={{ disabled: !chatInput.trim() || chatLoading }}
               >
-                <Text style={styles.sendBtnText}>➤</Text>
+                <Text style={styles.sendBtnText} accessibilityElementsHidden importantForAccessibility="no">➤</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1064,10 +1136,11 @@ export default function DashboardScreen({ navigation }) {
               <TextInput
                 style={styles.modalInput}
                 placeholder={weightPlaceholder()}
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.outline}
                 keyboardType="decimal-pad"
                 value={weightInput}
                 onChangeText={setWeightInput}
+                accessibilityLabel={weightLabel(isTr)}
                 autoFocus
               />
               <View style={styles.modalButtons}>
@@ -1077,6 +1150,8 @@ export default function DashboardScreen({ navigation }) {
                     setLogWeightVisible(false);
                     setWeightInput('');
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('cancel')}
                 >
                   <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
                 </TouchableOpacity>
@@ -1114,9 +1189,9 @@ const styles = StyleSheet.create({
 
   medDisclaimer: {
     backgroundColor: colors.warningBg, borderRadius: radii.md, padding: 10,
-    marginBottom: 14, borderWidth: 1, borderColor: '#FDE68A',
+    marginBottom: 14, borderWidth: 1, borderColor: colors.warning,
   },
-  medDisclaimerText: { fontSize: 11, fontFamily: fontFamily.body, color: '#92400E', lineHeight: 16, textAlign: 'center' },
+  medDisclaimerText: { fontSize: 11, fontFamily: fontFamily.body, color: colors.warning, lineHeight: 16, textAlign: 'center' },
 
   // ── Medication summary Card ──
   medCard: { marginBottom: 12 },
@@ -1309,7 +1384,7 @@ const styles = StyleSheet.create({
   },
   chatHandle: {
     width: 40, height: 4, borderRadius: 2,
-    backgroundColor: '#D1D5DB', alignSelf: 'center', marginTop: 10, marginBottom: 4,
+    backgroundColor: colors.outlineVariant, alignSelf: 'center', marginTop: 10, marginBottom: 4,
   },
   chatHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -1336,7 +1411,7 @@ const styles = StyleSheet.create({
   bubbleMsg: { fontSize: 14, fontFamily: fontFamily.body, lineHeight: 20 },
   bubbleMsgUser: { color: colors.onPrimary },
   bubbleMsgCoach: { color: colors.onSurface },
-  quickPrompts: { flexShrink: 0, maxHeight: 70, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  quickPrompts: { flexShrink: 0, maxHeight: 70, backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.outlineVariant },
   quickPrompt: {
     backgroundColor: colors.infoBg, borderRadius: radii.pill,
     paddingHorizontal: 14, paddingVertical: 8, alignSelf: 'flex-start',
@@ -1345,12 +1420,12 @@ const styles = StyleSheet.create({
   chatInputRow: {
     flexDirection: 'row', alignItems: 'flex-end', gap: 10,
     padding: 12, backgroundColor: colors.surface,
-    borderTopWidth: 1, borderTopColor: '#F3F4F6',
+    borderTopWidth: 1, borderTopColor: colors.outlineVariant,
   },
   chatInput: {
     flex: 1, borderWidth: 1.5, borderColor: colors.outlineVariant, borderRadius: 20,
     paddingHorizontal: 16, paddingVertical: 10, fontSize: 14, fontFamily: fontFamily.body,
-    color: colors.onSurface, maxHeight: 100, backgroundColor: '#F9FAFB',
+    color: colors.onSurface, maxHeight: 100, backgroundColor: colors.background,
   },
   sendBtn: {
     width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primary,

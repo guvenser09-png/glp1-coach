@@ -19,6 +19,8 @@ export default function Card({
   onPress,
   style,
   contentStyle,
+  accessibilityRole,
+  accessibilityLabel,
   ...rest
 }) {
   const cardStyle = [styles.card, shadow(elevation), { padding }, style];
@@ -27,6 +29,8 @@ export default function Card({
     return (
       <Pressable
         onPress={onPress}
+        accessibilityRole={accessibilityRole || 'button'}
+        accessibilityLabel={accessibilityLabel}
         style={({ pressed }) => [cardStyle, pressed && styles.pressed]}
         {...rest}
       >

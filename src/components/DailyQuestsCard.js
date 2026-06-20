@@ -49,7 +49,12 @@ export default function DailyQuestsCard({ proteinPct = 0, mealCount = 0, loggedW
 
       {/* Level + Streak row */}
       <View style={styles.topRow}>
-        <View style={styles.levelBadge}>
+        <View
+          style={styles.levelBadge}
+          accessible
+          accessibilityRole="text"
+          accessibilityLabel={isTr ? `${level.tr}, Seviye ${level.level}` : `${level.en}, Level ${level.level}`}
+        >
           <Text style={styles.levelEmoji}>{level.emoji}</Text>
           <View>
             <Text style={styles.levelName}>{isTr ? level.tr : level.en}</Text>
@@ -57,12 +62,22 @@ export default function DailyQuestsCard({ proteinPct = 0, mealCount = 0, loggedW
           </View>
         </View>
         <View style={styles.rightStats}>
-          <View style={styles.streakBadge}>
+          <View
+            style={styles.streakBadge}
+            accessible
+            accessibilityRole="text"
+            accessibilityLabel={isTr ? `${streak} günlük seri` : `${streak} day streak`}
+          >
             <Text style={styles.streakEmoji}>🔥</Text>
             <Text style={styles.streakNum}>{streak}</Text>
             <Text style={styles.streakLabel}>{isTr ? 'gün' : 'day'}</Text>
           </View>
-          <View style={[styles.healthBadge, { backgroundColor: healthColor + '20', borderColor: healthColor }]}>
+          <View
+            style={[styles.healthBadge, { backgroundColor: healthColor + '20', borderColor: healthColor }]}
+            accessible
+            accessibilityRole="text"
+            accessibilityLabel={isTr ? `Sağlık skoru ${healthScore}` : `Health score ${healthScore}`}
+          >
             <Text style={[styles.healthScore, { color: healthColor }]}>{healthScore}</Text>
             <Text style={[styles.healthLabel, { color: healthColor }]}>{isTr ? 'Skor' : 'Score'}</Text>
           </View>
@@ -100,7 +115,14 @@ export default function DailyQuestsCard({ proteinPct = 0, mealCount = 0, loggedW
         {MISSIONS.map((m) => {
           const done = completedMissions.includes(m.id);
           return (
-            <View key={m.id} style={[styles.missionRow, done && styles.missionRowDone]}>
+            <View
+              key={m.id}
+              style={[styles.missionRow, done && styles.missionRowDone]}
+              accessible
+              accessibilityRole="text"
+              accessibilityState={{ checked: done }}
+              accessibilityLabel={`${isTr ? m.tr : m.en}, +${m.xp} XP, ${done ? (isTr ? 'tamamlandı' : 'completed') : (isTr ? 'tamamlanmadı' : 'not completed')}`}
+            >
               <Text style={styles.missionIcon}>{done ? '✅' : m.icon}</Text>
               <Text style={[styles.missionText, done && styles.missionTextDone]}>
                 {isTr ? m.tr : m.en}

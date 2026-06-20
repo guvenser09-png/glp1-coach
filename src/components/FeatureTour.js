@@ -72,6 +72,7 @@ export default function FeatureTour({ visible, onFinish, language }) {
   const current = steps[step];
 
   function handleNext() {
+    // TODO(haptics): add light impact feedback here once a haptics util exists (expo-haptics not installed)
     if (step < steps.length - 1) {
       setStep((s) => s + 1);
     } else {
@@ -84,24 +85,34 @@ export default function FeatureTour({ visible, onFinish, language }) {
       <View style={styles.overlay}>
         <View style={styles.card}>
           {/* Step dots */}
-          <View style={styles.dots}>
+          <View
+            style={styles.dots}
+            accessibilityRole="progressbar"
+            accessibilityLabel={isTr ? `Adım ${step + 1} / ${steps.length}` : `Step ${step + 1} of ${steps.length}`}
+          >
             {steps.map((_, i) => (
               <View
                 key={i}
                 style={[styles.dot, i === step && { backgroundColor: current.color, width: 20 }]}
+                accessibilityElementsHidden
+                importantForAccessibility="no"
               />
             ))}
           </View>
 
           {/* Content */}
-          <View style={[styles.emojiCircle, { backgroundColor: current.color + '20' }]}>
+          <View
+            style={[styles.emojiCircle, { backgroundColor: current.color + '20' }]}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
             <Text style={styles.emoji}>{current.emoji}</Text>
           </View>
 
           <Text style={styles.stepLabel}>
             {isTr ? `${step + 1} / ${steps.length}` : `${step + 1} of ${steps.length}`}
           </Text>
-          <Text style={styles.title}>{current.title}</Text>
+          <Text style={styles.title} accessibilityRole="header">{current.title}</Text>
           <Text style={styles.desc}>{current.desc}</Text>
 
           {/* Buttons */}
@@ -109,6 +120,12 @@ export default function FeatureTour({ visible, onFinish, language }) {
             style={[styles.nextBtn, { backgroundColor: current.color }]}
             onPress={handleNext}
             activeOpacity={0.88}
+            accessibilityRole="button"
+            accessibilityLabel={
+              step < steps.length - 1
+                ? (isTr ? 'İleri' : 'Next')
+                : (isTr ? 'Başlayalım' : "Let's go")
+            }
           >
             <Text style={styles.nextBtnText}>
               {step < steps.length - 1
@@ -118,7 +135,12 @@ export default function FeatureTour({ visible, onFinish, language }) {
           </TouchableOpacity>
 
           {step < steps.length - 1 && (
-            <TouchableOpacity onPress={onFinish} style={styles.skipBtn}>
+            <TouchableOpacity
+              onPress={onFinish}
+              style={styles.skipBtn}
+              accessibilityRole="button"
+              accessibilityLabel={isTr ? 'Turu geç' : 'Skip tour'}
+            >
               <Text style={styles.skipText}>{isTr ? 'Geç' : 'Skip'}</Text>
             </TouchableOpacity>
           )}
@@ -154,7 +176,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 16,
   },
-  emoji: { fontSize: 36 },
+  emoji: { fontSize: 36, fontFamily: fontFamily.body },
   stepLabel: { fontSize: 12, fontFamily: fontFamily.bodySemiBold, color: colors.outline, fontWeight: '600', marginBottom: 8 },
   title: {
     fontSize: 22, fontWeight: '800', fontFamily: fontFamily.headingBold, color: colors.onSurface,

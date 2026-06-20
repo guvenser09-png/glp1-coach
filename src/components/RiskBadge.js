@@ -1,24 +1,25 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useLanguage } from '../context/LanguageContext';
+import { colors, fontFamily } from '../theme';
 
 const CONFIG = {
   Low: {
-    bg: '#D1FAE5',
-    text: '#065F46',
-    dot: '#10B981',
+    bg: colors.successBg,
+    text: colors.success,
+    dot: colors.success,
     key: 'riskLow',
   },
   Medium: {
-    bg: '#FEF3C7',
-    text: '#92400E',
-    dot: '#F59E0B',
+    bg: colors.warningBg,
+    text: colors.warning,
+    dot: colors.warning,
     key: 'riskMedium',
   },
   High: {
-    bg: '#FEE2E2',
-    text: '#991B1B',
-    dot: '#EF4444',
+    bg: colors.dangerBg,
+    text: colors.danger,
+    dot: colors.danger,
     key: 'riskHigh',
   },
 };
@@ -34,8 +35,13 @@ export default function RiskBadge({ level = 'Low' }) {
   const config = CONFIG[level] || CONFIG.Low;
 
   return (
-    <View style={[styles.badge, { backgroundColor: config.bg }]}>
-      <View style={[styles.dot, { backgroundColor: config.dot }]} />
+    <View
+      style={[styles.badge, { backgroundColor: config.bg }]}
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={t(config.key)}
+    >
+      <View style={[styles.dot, { backgroundColor: config.dot }]} accessibilityElementsHidden importantForAccessibility="no" />
       <Text style={[styles.text, { color: config.text }]}>{t(config.key)}</Text>
     </View>
   );
@@ -59,5 +65,6 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 13,
     fontWeight: '600',
+    fontFamily: fontFamily.bodySemiBold,
   },
 });

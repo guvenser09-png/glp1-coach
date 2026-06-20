@@ -36,9 +36,20 @@ export default function ListRow({
   divider = false,
   style,
   contentStyle,
+  accessibilityRole,
+  accessibilityLabel,
   ...rest
 }) {
   const Container = onPress ? Pressable : View;
+
+  // Compose an accessible label from the visible texts when none is supplied.
+  const composedLabel = [label, subtitle, value]
+    .filter((v) => typeof v === 'string' && v.length > 0)
+    .join(', ');
+  const a11yLabel =
+    accessibilityLabel != null
+      ? accessibilityLabel
+      : composedLabel || undefined;
 
   const renderTrailing = () => {
     if (right) return right;
@@ -48,6 +59,11 @@ export default function ListRow({
           value={toggleValue}
           onValueChange={onToggle}
           disabled={disabled}
+          accessibilityRole="switch"
+          accessibilityLabel={
+            typeof label === 'string' ? label : accessibilityLabel
+          }
+          accessibilityState={{ checked: !!toggleValue, disabled }}
           trackColor={{ false: colors.outlineVariant, true: colors.primary }}
           thumbColor={colors.white}
           ios_backgroundColor={colors.outlineVariant}
@@ -66,7 +82,8 @@ export default function ListRow({
     <Container
       onPress={onPress}
       disabled={disabled}
-      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityRole={accessibilityRole || (onPress ? 'button' : undefined)}
+      accessibilityLabel={onPress ? a11yLabel : accessibilityLabel}
       accessibilityState={onPress ? { disabled } : undefined}
       style={({ pressed } = {}) => [
         styles.row,
@@ -93,7 +110,7 @@ const styles = StyleSheet.create({
   row: { paddingVertical: 12 },
   divider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.outlineVariant },
   inner: { flexDirection: 'row', alignItems: 'center' },
-  icon: { marginRight: spacing.stackSm, width: 28, alignItems: 'center' },
+  icon: { marginRight: spacing.stackSm, minWidth: 28, alignItems: 'center' },
   textCol: { flex: 1 },
   label: { ...typography.bodyMd, color: colors.onSurface },
   subtitle: { ...typography.labelSm, color: colors.onSurfaceVariant, marginTop: 2 },

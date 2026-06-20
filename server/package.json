@@ -1,0 +1,14 @@
+{
+  "name": "glp1-coach-ai-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Server-side proxy that holds the OpenAI key and forwards chat requests for the GLP-1 Coach app. Not bundled into the mobile app.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

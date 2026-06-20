@@ -14,6 +14,8 @@ import {
   SafeAreaView as RNSafeAreaView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Linking } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -37,6 +39,10 @@ import {
 } from '../services/notificationService';
 import { Card, ListRow, SectionTitle, Chip, Badge, PrimaryButton, SecondaryButton } from '../components/ui';
 import { colors, semantic, spacing, radii, typography, fontFamily, shadow } from '../theme';
+
+// Support / legal contact. Centralised here so legal copy and the support row
+// stay in sync. (No shared app-wide constants module exists yet.)
+const SUPPORT_EMAIL = 'support@glp1coach.app';
 
 export default function SettingsScreen({ navigation }) {
   const { user, signOut } = useAuth();
@@ -420,16 +426,43 @@ export default function SettingsScreen({ navigation }) {
           text: language === 'tr' ? 'Hesabı Sil' : 'Delete Account',
           style: 'destructive',
           onPress: async () => {
+            // App Store 5.1.1(v): in-app account deletion. This is a local-only
+            // build, so deletion = wipe all local data + sign out. AsyncStorage
+            // is imported at the top of the module (no inline require).
             try {
-              const AsyncStorage = require('@react-native-async-storage/async-storage').default;
               await AsyncStorage.clear();
-              signOut();
             } catch {
-              signOut();
+              // Even if the wipe fails, still sign the user out below.
+            }
+            try {
+              await signOut();
+            } catch {
+              // no-op: signOut already clears auth state defensively.
             }
           },
         },
       ]
+    );
+  }
+
+  async function handleContactSupport() {
+    const isTr = language === 'tr';
+    const subject = encodeURIComponent('GLP-1 Coach Support');
+    const url = `mailto:${SUPPORT_EMAIL}?subject=${subject}`;
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+        return;
+      }
+    } catch {
+      // fall through to the informational alert below
+    }
+    Alert.alert(
+      isTr ? 'Destek' : 'Support',
+      isTr
+        ? `Bize şu adresten ulaşabilirsiniz: ${SUPPORT_EMAIL}`
+        : `You can reach us at: ${SUPPORT_EMAIL}`
     );
   }
 
@@ -459,7 +492,13 @@ export default function SettingsScreen({ navigation }) {
       <RNSafeAreaView style={styles.modalSafe}>
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>{title}</Text>
-          <TouchableOpacity onPress={onClose} style={styles.modalClose} activeOpacity={0.7}>
+          <TouchableOpacity
+            onPress={onClose}
+            style={styles.modalClose}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={isTr ? 'Kapat' : 'Close'}
+          >
             <Text style={styles.modalCloseText}>✕</Text>
           </TouchableOpacity>
         </View>
@@ -518,6 +557,8 @@ export default function SettingsScreen({ navigation }) {
                 onPress={() => setProteinModalVisible(false)}
                 style={styles.modalClose}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={isTr ? 'Kapat' : 'Close'}
               >
                 <Text style={styles.modalCloseText}>✕</Text>
               </TouchableOpacity>
@@ -637,7 +678,13 @@ export default function SettingsScreen({ navigation }) {
                 <Text style={styles.profileEmail}>{user?.email || profile?.email || ''}</Text>
               </View>
               {!editMode && (
-                <TouchableOpacity style={styles.editBtn} onPress={() => setEditMode(true)} activeOpacity={0.7}>
+                <TouchableOpacity
+                  style={styles.editBtn}
+                  onPress={() => setEditMode(true)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={isTr ? 'Profili düzenle' : 'Edit profile'}
+                >
                   <Text style={styles.editBtnText}>✏️</Text>
                 </TouchableOpacity>
               )}
@@ -908,6 +955,14 @@ export default function SettingsScreen({ navigation }) {
               label={isTr ? 'Kullanım Koşulları' : 'Terms of Use'}
               chevron
               onPress={() => setTermsVisible(true)}
+              divider
+            />
+            <ListRow
+              icon={<Text style={styles.rowEmoji}>✉️</Text>}
+              label={isTr ? 'Destek & İletişim' : 'Support & Contact'}
+              subtitle={SUPPORT_EMAIL}
+              chevron
+              onPress={handleContactSupport}
             />
           </Card>
 
@@ -923,12 +978,24 @@ export default function SettingsScreen({ navigation }) {
           </Card>
 
           {/* Sign out */}
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.85}>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={handleLogout}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={t('logout')}
+          >
             <Text style={styles.logoutText}>{t('logout')}</Text>
           </TouchableOpacity>
 
-          {/* Delete Account */}
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteAccount} activeOpacity={0.85}>
+          {/* Delete Account (App Store 5.1.1(v) — in-app account deletion) */}
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={handleDeleteAccount}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel={isTr ? 'Hesabı kalıcı olarak sil' : 'Permanently delete account'}
+          >
             <Text style={styles.deleteText}>
               {isTr ? '🗑 Hesabı Kalıcı Olarak Sil' : '🗑 Permanently Delete Account'}
             </Text>
@@ -1019,9 +1086,9 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#FDE68A',
+    borderColor: semantic.warning.fg,
   },
-  disclaimerText: { ...typography.labelSm, color: '#92400E', lineHeight: 18 },
+  disclaimerText: { ...typography.labelSm, color: semantic.warning.fg, lineHeight: 18, fontFamily: fontFamily.bodyMedium },
 
   // Sign out / delete
   logoutButton: {
@@ -1030,7 +1097,7 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#FECACA',
+    borderColor: semantic.danger.fg,
     marginTop: spacing.stackSm,
   },
   logoutText: { color: colors.danger, fontFamily: fontFamily.bodyBold, fontSize: 16 },

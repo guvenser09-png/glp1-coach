@@ -101,7 +101,13 @@ export default function LoginScreen() {
       <RNSafeAreaView style={styles.modalSafe}>
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>{title}</Text>
-          <TouchableOpacity onPress={onClose} style={styles.modalClose} activeOpacity={0.7}>
+          <TouchableOpacity
+            onPress={onClose}
+            style={styles.modalClose}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={isTr ? 'Kapat' : 'Close'}
+          >
             <Text style={styles.modalCloseText}>✕</Text>
           </TouchableOpacity>
         </View>
@@ -190,9 +196,12 @@ export default function LoginScreen() {
               onPress={handleAppleLogin}
               disabled={loading}
               activeOpacity={0.88}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: loading, busy: loading }}
+              accessibilityLabel={isTr ? 'Apple ile Devam Et' : 'Continue with Apple'}
             >
               {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
+                <ActivityIndicator color={colors.white} />
               ) : (
                 <>
                   <Text style={styles.appleBtnIcon}></Text>
@@ -222,6 +231,7 @@ export default function LoginScreen() {
               onChangeText={setName}
               autoCapitalize="words"
               returnKeyType="next"
+              accessibilityLabel={isTr ? 'Ad Soyad' : 'Full Name'}
             />
           )}
           <TextInput
@@ -234,6 +244,7 @@ export default function LoginScreen() {
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="next"
+            accessibilityLabel={isTr ? 'E-posta' : 'Email'}
           />
           <TextInput
             style={styles.input}
@@ -244,12 +255,20 @@ export default function LoginScreen() {
             secureTextEntry
             returnKeyType="done"
             onSubmitEditing={handleEmailAuth}
+            accessibilityLabel={isTr ? 'Şifre' : 'Password'}
           />
           <TouchableOpacity
             style={[styles.emailBtn, emailLoading && styles.btnDisabled]}
             onPress={handleEmailAuth}
             disabled={emailLoading}
             activeOpacity={0.88}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: emailLoading, busy: emailLoading }}
+            accessibilityLabel={
+              signupMode
+                ? isTr ? 'Hesap Oluştur' : 'Create Account'
+                : isTr ? 'Giriş Yap' : 'Sign In'
+            }
           >
             {emailLoading ? (
               <ActivityIndicator color={colors.white} />
@@ -265,6 +284,12 @@ export default function LoginScreen() {
             onPress={() => setSignupMode((m) => !m)}
             activeOpacity={0.7}
             style={styles.switchModeBtn}
+            accessibilityRole="button"
+            accessibilityLabel={
+              signupMode
+                ? isTr ? 'Zaten hesabın var mı? Giriş yap' : 'Already have an account? Sign in'
+                : isTr ? 'Hesabın yok mu? Kayıt ol' : "Don't have an account? Sign up"
+            }
           >
             <Text style={styles.switchModeText}>
               {signupMode
@@ -279,7 +304,12 @@ export default function LoginScreen() {
           <Text style={styles.disclaimer}>
             {isTr ? 'Devam ederek ' : 'By continuing, you agree to our '}
           </Text>
-          <TouchableOpacity onPress={() => setTermsVisible(true)} activeOpacity={0.7}>
+          <TouchableOpacity
+            onPress={() => setTermsVisible(true)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={isTr ? 'Kullanım Koşulları' : 'Terms of Use'}
+          >
             <Text style={styles.disclaimerLink}>
               {isTr ? 'Kullanım Koşulları' : 'Terms of Use'}
             </Text>
@@ -287,7 +317,12 @@ export default function LoginScreen() {
           <Text style={styles.disclaimer}>
             {isTr ? ' ve ' : ' and '}
           </Text>
-          <TouchableOpacity onPress={() => setPrivacyVisible(true)} activeOpacity={0.7}>
+          <TouchableOpacity
+            onPress={() => setPrivacyVisible(true)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={isTr ? 'Gizlilik Politikası' : 'Privacy Policy'}
+          >
             <Text style={styles.disclaimerLink}>
               {isTr ? 'Gizlilik Politikası' : 'Privacy Policy'}
             </Text>

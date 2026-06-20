@@ -1,9 +1,13 @@
 import * as Notifications from 'expo-notifications';
 
-import { OPENAI_API_KEY } from '../config';
+import { callAIChat } from './aiClient';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
+    // SDK 54 / expo-notifications 0.32: foreground presentation needs
+    // shouldShowBanner + shouldShowList (shouldShowAlert is deprecated).
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
@@ -80,8 +84,22 @@ export async function scheduleDailyMotivation(language = 'en', hour = 9, minute 
   return true;
 }
 
-// ── OpenAI personalized notification generator ───────────────────────────────
+// ── AI personalized notification generator (via secure proxy) ────────────────
 
+// Local fallback used when the AI proxy is unavailable (AI_UNAVAILABLE) or any
+// request/parse error occurs. Pulls a fresh message from the existing banks so a
+// missed AI call still surfaces a real, on-brand notification (never fake AI).
+function pickFallbackMotivation(language) {
+  const messages = language === 'tr' ? MESSAGES_TR : MESSAGES_EN;
+  return messages[Math.floor(Math.random() * messages.length)];
+}
+
+/**
+ * Generates a personalized morning notification via the secure AI proxy
+ * (callAIChat — no client-side OpenAI key). On AI_UNAVAILABLE or any failure,
+ * falls back to the existing local message banks so a notification is always
+ * scheduled. Returns { title, body }.
+ */
 async function generateMotivationViaAI(userData, language) {
   const isTr = language === 'tr';
   const {
@@ -108,27 +126,31 @@ Return JSON only: {"title":"...","body":"..."}`;
     ? `Kilo: ${currentWeight || '?'}kg | Protein hedefi: ${proteinTarget}g | Bugün: ${analyzedTodayProtein}g (%${proteinPct}) | Kalan: ${remaining}g | Haftalık kayıp: ${weeklyChange.toFixed(1)}kg | Kas kaybı: %${musclePct} | 7g ort protein: %${Math.round(avgProteinRatio * 100)}`
     : `Weight: ${currentWeight || '?'}kg | Protein target: ${proteinTarget}g | Today: ${analyzedTodayProtein}g (${proteinPct}%) | Remaining: ${remaining}g | Weekly loss: ${weeklyChange.toFixed(1)}kg | Muscle loss: ${musclePct}% | 7d avg protein: ${Math.round(avgProteinRatio * 100)}%`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      max_tokens: 80,
-      temperature: 0.9,
+  try {
+    // Route through the secure proxy — no client-side key. callAIChat returns the
+    // assistant text and signals AI_UNAVAILABLE (throw or error code) when no
+    // backend/key is configured.
+    const raw = await callAIChat({
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userContext },
       ],
-    }),
-  });
+      temperature: 0.9,
+      maxTokens: 80,
+    });
 
-  if (!response.ok) throw new Error('OpenAI notification error');
-  const data = await response.json();
-  const raw = data.choices[0].message.content.trim();
-  return JSON.parse(raw.replace(/```json|```/g, '').trim());
+    const text = typeof raw === 'string' ? raw : raw?.content;
+    if (!text) throw new Error('AI_UNAVAILABLE');
+
+    const parsed = JSON.parse(String(text).replace(/```json|```/g, '').trim());
+    if (parsed && parsed.title && parsed.body) {
+      return { title: String(parsed.title), body: String(parsed.body) };
+    }
+    throw new Error('AI_UNAVAILABLE');
+  } catch {
+    // AI_UNAVAILABLE or network/parse failure → real local message bank entry.
+    return pickFallbackMotivation(language);
+  }
 }
 
 // ── Schedule personalized notifications (call on app open) ───────────────────

@@ -5,8 +5,23 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const bodyMeasurementsKey = (uid) => `body_measurements_${uid}`;
 const symptomLogsKey = (uid) => `symptom_logs_${uid}`;
 
-const MAX_MEASUREMENTS = 60;
-const MAX_SYMPTOMS = 90;
+// Soft safety caps to bound storage growth without dropping real history (B2).
+// Raised far above any realistic long-term use so measurements/symptoms are
+// never silently lost — years of daily logging stays well under these limits.
+const MAX_MEASUREMENTS = 5000;
+const MAX_SYMPTOMS = 5000;
+
+// Safely parse JSON from AsyncStorage; returns `fallback` on missing/corrupt
+// data instead of throwing (B5: unguarded JSON.parse).
+function safeParse(raw, fallback) {
+  if (raw == null) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed == null ? fallback : parsed;
+  } catch (e) {
+    return fallback;
+  }
+}
 
 // Body measurement fields (all in cm), all optional per entry.
 const MEASUREMENT_FIELDS = ['waist', 'arm', 'neck', 'chest', 'hip'];
@@ -59,12 +74,17 @@ export async function saveMeasurement(uid, { date, waist, arm, neck, chest, hip 
 
   const key = bodyMeasurementsKey(uid);
   const raw = await AsyncStorage.getItem(key);
-  const entries = raw ? JSON.parse(raw) : [];
+  const entries = safeParse(raw, []);
   entries.push(entry);
 
-  const sorted = entries
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-    .slice(-MAX_MEASUREMENTS);
+  const sortedAll = entries.sort((a, b) =>
+    String(a.date).localeCompare(String(b.date))
+  );
+  // Retain full measurement history; only trim past the high safety cap (B2).
+  const sorted =
+    sortedAll.length > MAX_MEASUREMENTS
+      ? sortedAll.slice(-MAX_MEASUREMENTS)
+      : sortedAll;
 
   await AsyncStorage.setItem(key, JSON.stringify(sorted));
   return sorted;
@@ -76,7 +96,7 @@ export async function saveMeasurement(uid, { date, waist, arm, neck, chest, hip 
  */
 export async function getMeasurements(uid) {
   const raw = await AsyncStorage.getItem(bodyMeasurementsKey(uid));
-  const entries = raw ? JSON.parse(raw) : [];
+  const entries = safeParse(raw, []);
   return entries
     .slice()
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -106,13 +126,18 @@ export async function logSymptom(uid, { date, type, severity } = {}) {
 
   const key = symptomLogsKey(uid);
   const raw = await AsyncStorage.getItem(key);
-  const entries = raw ? JSON.parse(raw) : [];
+  const entries = safeParse(raw, []);
   entries.push(entry);
 
-  // Persist oldest -> newest, capped, then return newest-first.
-  const sorted = entries
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-    .slice(-MAX_SYMPTOMS);
+  // Persist oldest -> newest, retaining full history; only trim past the high
+  // safety cap (B2). Returned newest-first below.
+  const sortedAll = entries.sort((a, b) =>
+    String(a.date).localeCompare(String(b.date))
+  );
+  const sorted =
+    sortedAll.length > MAX_SYMPTOMS
+      ? sortedAll.slice(-MAX_SYMPTOMS)
+      : sortedAll;
 
   await AsyncStorage.setItem(key, JSON.stringify(sorted));
   return sorted.slice().reverse();
@@ -124,7 +149,7 @@ export async function logSymptom(uid, { date, type, severity } = {}) {
  */
 export async function getSymptoms(uid) {
   const raw = await AsyncStorage.getItem(symptomLogsKey(uid));
-  const entries = raw ? JSON.parse(raw) : [];
+  const entries = safeParse(raw, []);
   return entries
     .slice()
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));

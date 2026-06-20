@@ -6,7 +6,23 @@ const profileKey = (uid) => `medication_profile_${uid}`;
 const doseLogsKey = (uid) => `dose_logs_${uid}`;
 const doseChangesKey = (uid) => `dose_changes_${uid}`;
 
-const MAX_DOSE_CHANGES = 60;
+// Soft safety caps to bound storage growth without dropping real history.
+// Raised far above any realistic long-term use so logs are never silently lost
+// (B2): weekly GLP-1 titration over many years stays well under these limits.
+const MAX_DOSE_CHANGES = 5000;
+const MAX_DOSE_LOGS = 5000;
+
+// Safely parse JSON from AsyncStorage; returns `fallback` on missing/corrupt
+// data instead of throwing (B5: unguarded JSON.parse).
+function safeParse(raw, fallback) {
+  if (raw == null) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed == null ? fallback : parsed;
+  } catch (e) {
+    return fallback;
+  }
+}
 
 // ── Dose helpers ─────────────────────────────────────────────────────────────────
 
@@ -61,7 +77,9 @@ export async function getMedicationProfile(uid) {
   if (!raw) return null;
   // Derive doseMg from the legacy 'dose' string when missing, and keep
   // dose/doseMg/doseUnit consistent for existing screens.
-  return normalizeProfileDose(JSON.parse(raw));
+  const parsed = safeParse(raw, null);
+  if (!parsed) return null;
+  return normalizeProfileDose(parsed);
 }
 
 export async function saveMedicationProfile(uid, profile) {
@@ -85,19 +103,22 @@ export async function saveMedicationProfile(uid, profile) {
 export async function logDose(uid, { date, dose }) {
   const key = doseLogsKey(uid);
   const raw = await AsyncStorage.getItem(key);
-  const logs = raw ? JSON.parse(raw) : [];
+  const logs = safeParse(raw, []);
   logs.push({
     date: date || new Date().toISOString().split('T')[0],
     dose: dose || '',
     timestamp: new Date().toISOString(),
   });
-  await AsyncStorage.setItem(key, JSON.stringify(logs.slice(-90)));
-  return logs;
+  // Keep full dose history; only trim if it exceeds the high safety cap so we
+  // never silently drop a recent injection log (B2).
+  const trimmed = logs.length > MAX_DOSE_LOGS ? logs.slice(-MAX_DOSE_LOGS) : logs;
+  await AsyncStorage.setItem(key, JSON.stringify(trimmed));
+  return trimmed;
 }
 
 export async function getDoseLogs(uid) {
   const raw = await AsyncStorage.getItem(doseLogsKey(uid));
-  return raw ? JSON.parse(raw) : [];
+  return safeParse(raw, []);
 }
 
 // ── Titration timeline (dose changes) ────────────────────────────────────────────
@@ -107,7 +128,7 @@ export async function getDoseLogs(uid) {
  */
 export async function getDoseChanges(uid) {
   const raw = await AsyncStorage.getItem(doseChangesKey(uid));
-  const changes = raw ? JSON.parse(raw) : [];
+  const changes = safeParse(raw, []);
   return changes
     .slice()
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -126,12 +147,17 @@ export async function recordDoseChange(uid, { doseMg, date } = {}) {
 
   const key = doseChangesKey(uid);
   const raw = await AsyncStorage.getItem(key);
-  const changes = raw ? JSON.parse(raw) : [];
+  const changes = safeParse(raw, []);
   changes.push(entry);
 
-  const sorted = changes
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-    .slice(-MAX_DOSE_CHANGES);
+  const sortedAll = changes.sort((a, b) =>
+    String(a.date).localeCompare(String(b.date))
+  );
+  // Retain the full titration timeline; only trim past the high safety cap (B2).
+  const sorted =
+    sortedAll.length > MAX_DOSE_CHANGES
+      ? sortedAll.slice(-MAX_DOSE_CHANGES)
+      : sortedAll;
 
   await AsyncStorage.setItem(key, JSON.stringify(sorted));
 

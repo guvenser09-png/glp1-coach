@@ -133,13 +133,15 @@ export default function SocialScreen() {
     [filter]
   );
 
-  // Mount: seed sample posts, check guidelines flag, load feed.
+  // Mount: check guidelines flag, load feed.
+  // NOTE(store-compliance / App Store 2.1): no fake/sample posts are seeded —
+  // the feed is genuine user-generated content only. A new user sees a proper
+  // empty state ("Be the first to post") until real posts exist.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        await socialService.seedIfEmpty(language);
         const ack = await AsyncStorage.getItem(GUIDELINES_FLAG_KEY);
         if (!cancelled) setGuidelinesAck(ack === 'true');
         await loadFeed(filter);
@@ -490,24 +492,40 @@ export default function SocialScreen() {
 
   const listEmpty = useMemo(() => {
     if (loading) return null;
+    const isAll = filter === 'all';
     return (
       <View style={styles.emptyWrap}>
-        <Text style={styles.emptyEmoji}>🌱</Text>
+        <Text style={styles.emptyEmoji} accessibilityElementsHidden importantForAccessibility="no">
+          🌱
+        </Text>
         <Text style={styles.emptyTitle}>
-          {isTr ? 'Henüz gönderi yok' : 'No posts yet'}
+          {isAll
+            ? isTr
+              ? 'İlk paylaşımı sen yap'
+              : 'Be the first to post'
+            : isTr
+            ? 'Henüz gönderi yok'
+            : 'No posts yet'}
         </Text>
         <Text style={styles.emptyText}>
-          {filter === 'all'
+          {isAll
             ? isTr
-              ? 'İlk paylaşımı sen yap ve topluluğu başlat.'
-              : 'Be the first to share and kick off the community.'
+              ? 'Topluluk gerçek üyelerin paylaşımlarıyla büyür. Deneyimini paylaşarak başlat.'
+              : 'This community grows from real members. Share your experience to kick it off.'
             : isTr
             ? 'Bu filtre için gönderi bulunamadı.'
             : 'No posts match this filter.'}
         </Text>
+        {isAll && (
+          <PrimaryButton
+            title={isTr ? 'İlk gönderiyi oluştur' : 'Create the first post'}
+            onPress={() => openComposer()}
+            style={styles.emptyCta}
+          />
+        )}
       </View>
     );
-  }, [loading, isTr, filter]);
+  }, [loading, isTr, filter, openComposer]);
 
   return (
     <Screen contentStyle={styles.screenContent}>
@@ -929,6 +947,10 @@ const styles = StyleSheet.create({
     color: colors.onSurfaceVariant,
     textAlign: 'center',
     marginTop: spacing.stackSm,
+  },
+  emptyCta: {
+    marginTop: spacing.stackMd,
+    alignSelf: 'stretch',
   },
 
   // FAB
