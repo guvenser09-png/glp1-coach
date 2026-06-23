@@ -21,7 +21,6 @@ jobs:
         run: npm ci
 
       - name: Lint
-        continue-on-error: true
         run: npm run lint
 
       - name: Typecheck
@@ -29,3 +28,7 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Audit dependencies (informational)
+        continue-on-error: true
+        run: npm audit --audit-level=high

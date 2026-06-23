@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Localization from 'expo-localization';
 
@@ -55,8 +55,13 @@ export function LanguageProvider({ children }) {
     }
   }, []);
 
+  const value = useMemo(
+    () => ({ t, language, setLanguage }),
+    [t, language, setLanguage]
+  );
+
   return (
-    <LanguageContext.Provider value={{ t, language, setLanguage }}>
+    <LanguageContext.Provider value={value}>
       {children}
     </LanguageContext.Provider>
   );

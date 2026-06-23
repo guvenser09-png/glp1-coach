@@ -36,6 +36,8 @@ import {
   generateCoachMessage,
   detectRebound,
 } from '../utils/heuristics';
+import { assessMuscleProtection } from '../utils/muscle';
+import MedicalDisclaimer from '../components/MedicalDisclaimer';
 import {
   saveWeightLog,
   getWeightLogs,
@@ -105,12 +107,12 @@ function getRotatingSuggestion(remainingProtein, language) {
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-function getFatMuscleRatio(proteinRatio) {
-  if (proteinRatio >= 1.0) return { fatPct: 95, musclePct: 5 };
-  if (proteinRatio >= 0.8) return { fatPct: 80, musclePct: 20 };
-  if (proteinRatio >= 0.6) return { fatPct: 65, musclePct: 35 };
-  return { fatPct: 50, musclePct: 50 };
-}
+// NOTE (audit #10): the old getFatMuscleRatio() turned a protein ratio into a
+// fabricated fat-vs-muscle split (and precise kg-of-muscle-lost / "muscle risk
+// %" figures). The app cannot measure body composition, so those numbers were
+// not clinically valid. Muscle-protection messaging now lives in
+// utils/muscle.js (assessMuscleProtection), which returns a qualitative trend
+// with no invented percentages or kg.
 
 function getGreeting(language) {
   const hour = new Date().getHours();
@@ -395,24 +397,14 @@ export default function DashboardScreen({ navigation }) {
   const analyzedTodayProtein = todayMeals.reduce((sum, m) => sum + (m.protein || 0), 0);
   const proteinRatio = proteinTarget > 0 ? analyzedTodayProtein / proteinTarget : 0;
 
-  const { fatPct, musclePct } = getFatMuscleRatio(avgProteinRatio || proteinRatio);
-  const fatLostKg =
-    totalWeightLost > 0 ? parseFloat(((totalWeightLost * fatPct) / 100).toFixed(1)) : 0;
-  const muscleLostKg =
-    totalWeightLost > 0 ? parseFloat(((totalWeightLost * musclePct) / 100).toFixed(1)) : 0;
-
-  // 14-day projection using real daily rate
-  const projected14 = dailyRate > 0 ? parseFloat((dailyRate * 14).toFixed(1)) : 0;
-  // Path A — current trajectory
-  const proj14Fat    = projected14 > 0 ? parseFloat(((projected14 * fatPct) / 100).toFixed(1)) : 0;
-  const proj14Muscle = projected14 > 0 ? parseFloat(((projected14 * musclePct) / 100).toFixed(1)) : 0;
-  // Path B — protein 100% (95/5 split)
-  const proj14FatOpt    = projected14 > 0 ? parseFloat(((projected14 * 95) / 100).toFixed(1)) : 0;
-  const proj14MuscleOpt = projected14 > 0 ? parseFloat(((projected14 * 5)  / 100).toFixed(1)) : 0;
-  // Path C — protein 100% + resistance exercise (98/2 split)
-  const proj14FatBest    = projected14 > 0 ? parseFloat(((projected14 * 98) / 100).toFixed(1)) : 0;
-  const proj14MuscleBest = projected14 > 0 ? parseFloat(((projected14 * 2)  / 100).toFixed(1)) : 0;
-  const showProjection = projected14 > 0;
+  // Qualitative muscle-protection assessment (audit #10) — no fabricated
+  // fat/muscle split, no kg-of-muscle-lost, no precise "muscle risk %".
+  const muscleAssessment = assessMuscleProtection({
+    proteinGrams: analyzedTodayProtein,
+    targetGrams: proteinTarget,
+    exerciseDaysPerWeek: exerciseDays,
+    adequacyRatio: avgProteinRatio || proteinRatio,
+  });
 
   const consecutiveLowProteinDays = (() => {
     let count = 0;
@@ -505,7 +497,9 @@ export default function DashboardScreen({ navigation }) {
             (s, m) => s + (m.protein || 0),
             0
           );
-          const { musclePct: notifMusclePct } = getFatMuscleRatio(computedAvgRatio);
+          // Pass real protein-adequacy data only — no fabricated muscle-loss
+          // percentage (audit #10). The notification service has its own safe
+          // default for musclePct if any legacy copy still references it.
           await schedulePersonalizedNotifications(
             {
               currentWeight: latestWeight,
@@ -513,7 +507,6 @@ export default function DashboardScreen({ navigation }) {
               analyzedTodayProtein: todayProtein,
               avgProteinRatio: computedAvgRatio,
               weeklyChange: wChange,
-              musclePct: notifMusclePct,
             },
             language
           );
@@ -1004,6 +997,33 @@ export default function DashboardScreen({ navigation }) {
           />
         </Card>
 
+        {/* ── Muscle protection insight (qualitative trend, audit #10) ── */}
+        {(() => {
+          const tone =
+            semantic[muscleAssessment.toneKey] || semantic.info; // 'primary' → info
+          return (
+            <Card style={styles.muscleCard}>
+              <View style={styles.muscleHeader}>
+                <Text style={styles.muscleEmoji}>{muscleAssessment.emoji}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.muscleLabel, { color: tone.fg }]}>
+                    {muscleAssessment.label(language)}
+                  </Text>
+                  <Text style={styles.muscleDesc}>
+                    {muscleAssessment.description(language)}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.muscleNotClinical}>
+                {muscleAssessment.notClinical(language)}
+              </Text>
+            </Card>
+          );
+        })()}
+
+        {/* Health-guidance disclaimer, bound near the muscle/health insight. */}
+        <MedicalDisclaimer variant="medical" style={styles.muscleDisclaimer} />
+
         {/* ── Coach Message ── (always available) */}
         <CoachMessage message={coachMsg} />
 
@@ -1390,6 +1410,32 @@ const makeStyles = (colors, semantic, shadow) => StyleSheet.create({
     marginTop: 4,
   },
   proteinBar: { marginTop: 2 },
+
+  // ── Muscle protection insight (qualitative trend) ──
+  muscleCard: { marginBottom: spacing.stackSm },
+  muscleHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  muscleEmoji: { fontSize: 24, marginTop: 1 },
+  muscleLabel: {
+    fontSize: 15,
+    fontFamily: fontFamily.bodyBold,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  muscleDesc: {
+    fontSize: 13,
+    fontFamily: fontFamily.body,
+    color: colors.onSurfaceVariant,
+    lineHeight: 18,
+  },
+  muscleNotClinical: {
+    marginTop: 10,
+    fontSize: 11,
+    fontFamily: fontFamily.body,
+    color: colors.outline,
+    lineHeight: 15,
+    fontStyle: 'italic',
+  },
+  muscleDisclaimer: { marginBottom: spacing.stackMd },
 
   // ── Coach Chat ──
   chatOverlay: {

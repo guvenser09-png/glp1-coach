@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 
 const AuthContext = createContext({
@@ -106,7 +106,7 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     try {
       if (isSupabaseConfigured()) {
         await supabase.auth.signOut();
@@ -116,11 +116,11 @@ export function AuthProvider({ children }) {
     } finally {
       setUser(null);
     }
-  };
+  }, []);
 
   // Resend the signup confirmation email for an address that registered but
   // hasn't confirmed yet. Surfaces a coded error the UI can show to the user.
-  const resendConfirmation = async (email) => {
+  const resendConfirmation = useCallback(async (email) => {
     const cleanEmail = String(email || '').trim().toLowerCase();
     if (!cleanEmail) {
       throw new Error('missing-credentials');
@@ -134,11 +134,11 @@ export function AuthProvider({ children }) {
     });
     if (error) throw friendlyAuthError(error);
     return { ok: true };
-  };
+  }, []);
 
   // Email sign-up / sign-in via Supabase Auth.
   // If `name` is provided -> sign up (new account). Otherwise -> sign in.
-  const signInWithEmail = async (email, password, name) => {
+  const signInWithEmail = useCallback(async (email, password, name) => {
     const cleanEmail = String(email || '').trim().toLowerCase();
     if (!cleanEmail || !password) {
       throw new Error('missing-credentials');
@@ -195,10 +195,15 @@ export function AuthProvider({ children }) {
       if (e instanceof Error && e.message) throw e;
       throw new Error('auth-error');
     }
-  };
+  }, []);
+
+  const value = useMemo(
+    () => ({ user, loading, signOut, signInWithEmail, resendConfirmation }),
+    [user, loading, signOut, signInWithEmail, resendConfirmation]
+  );
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut, signInWithEmail, resendConfirmation }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

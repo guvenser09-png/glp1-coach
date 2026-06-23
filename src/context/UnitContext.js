@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Localization from 'expo-localization';
 
@@ -36,32 +36,32 @@ export function UnitProvider({ children }) {
     });
   }, []);
 
-  const setUnitSystem = async (sys) => {
+  const setUnitSystem = useCallback(async (sys) => {
     setUnitSystemState(sys);
     await AsyncStorage.setItem(UNIT_KEY, sys);
-  };
+  }, []);
 
   const isImperial = unitSystem === 'imperial';
 
   // kg → lbs
-  const toDisplayWeight = (kg) => isImperial ? Math.round(kg * 2.20462 * 10) / 10 : kg;
+  const toDisplayWeight = useCallback((kg) => isImperial ? Math.round(kg * 2.20462 * 10) / 10 : kg, [isImperial]);
   // cm → total inches (for display as ft'in")
-  const toDisplayHeight = (cm) => isImperial ? cm / 2.54 : cm;
+  const toDisplayHeight = useCallback((cm) => isImperial ? cm / 2.54 : cm, [isImperial]);
   // lbs → kg
-  const toKg = (lbs) => isImperial ? Math.round(lbs / 2.20462 * 10) / 10 : lbs;
+  const toKg = useCallback((lbs) => isImperial ? Math.round(lbs / 2.20462 * 10) / 10 : lbs, [isImperial]);
   // inches → cm
-  const toCm = (inches) => isImperial ? Math.round(inches * 2.54) : inches;
+  const toCm = useCallback((inches) => isImperial ? Math.round(inches * 2.54) : inches, [isImperial]);
 
   const weightUnit = isImperial ? 'lbs' : 'kg';
   const heightUnit = isImperial ? 'in' : 'cm';
 
-  function formatWeight(kg) {
+  const formatWeight = useCallback((kg) => {
     if (!kg && kg !== 0) return '—';
     if (isImperial) return `${toDisplayWeight(kg)} lbs`;
     return `${kg} kg`;
-  }
+  }, [isImperial, toDisplayWeight]);
 
-  function formatHeight(cm) {
+  const formatHeight = useCallback((cm) => {
     if (!cm && cm !== 0) return '—';
     if (isImperial) {
       const totalIn = cm / 2.54;
@@ -70,42 +70,53 @@ export function UnitProvider({ children }) {
       return `${ft}'${inches}"`;
     }
     return `${cm} cm`;
-  }
+  }, [isImperial]);
 
   // Parse weight input string → kg (stored always as kg)
-  function parseWeightToKg(str) {
+  const parseWeightToKg = useCallback((str) => {
     const val = parseFloat(str.replace(',', '.'));
     if (isNaN(val)) return null;
     return isImperial ? Math.round(val / 2.20462 * 10) / 10 : val;
-  }
+  }, [isImperial]);
 
   // Parse height input string → cm (stored always as cm)
-  function parseHeightToCm(str) {
+  const parseHeightToCm = useCallback((str) => {
     const val = parseFloat(str.replace(',', '.'));
     if (isNaN(val)) return null;
     return isImperial ? Math.round(val * 2.54) : val;
-  }
+  }, [isImperial]);
 
   // Validation ranges in display units
-  const weightRange = isImperial ? { min: 66, max: 660 } : { min: 30, max: 300 };
-  const heightRange = isImperial ? { min: 39, max: 98 }  : { min: 100, max: 250 };
+  const weightRange = useMemo(() => isImperial ? { min: 66, max: 660 } : { min: 30, max: 300 }, [isImperial]);
+  const heightRange = useMemo(() => isImperial ? { min: 39, max: 98 }  : { min: 100, max: 250 }, [isImperial]);
 
-  function weightPlaceholder() { return isImperial ? 'e.g. 176' : 'örn. 80'; }
-  function heightPlaceholder() { return isImperial ? 'e.g. 69'  : 'örn. 170'; }
-  function weightLabel(isTr)  { return isTr ? `Kilo (${weightUnit})` : `Weight (${weightUnit})`; }
-  function heightLabel(isTr)  { return isTr ? `Boy (${heightUnit})`  : `Height (${heightUnit})`; }
+  const weightPlaceholder = useCallback(() => isImperial ? 'e.g. 176' : 'örn. 80', [isImperial]);
+  const heightPlaceholder = useCallback(() => isImperial ? 'e.g. 69'  : 'örn. 170', [isImperial]);
+  const weightLabel = useCallback((isTr) => isTr ? `Kilo (${weightUnit})` : `Weight (${weightUnit})`, [weightUnit]);
+  const heightLabel = useCallback((isTr) => isTr ? `Boy (${heightUnit})`  : `Height (${heightUnit})`, [heightUnit]);
+
+  const value = useMemo(() => ({
+    unitSystem, setUnitSystem, isImperial,
+    toDisplayWeight, toDisplayHeight, toKg, toCm,
+    weightUnit, heightUnit,
+    formatWeight, formatHeight,
+    parseWeightToKg, parseHeightToCm,
+    weightRange, heightRange,
+    weightPlaceholder, heightPlaceholder,
+    weightLabel, heightLabel,
+  }), [
+    unitSystem, setUnitSystem, isImperial,
+    toDisplayWeight, toDisplayHeight, toKg, toCm,
+    weightUnit, heightUnit,
+    formatWeight, formatHeight,
+    parseWeightToKg, parseHeightToCm,
+    weightRange, heightRange,
+    weightPlaceholder, heightPlaceholder,
+    weightLabel, heightLabel,
+  ]);
 
   return (
-    <UnitContext.Provider value={{
-      unitSystem, setUnitSystem, isImperial,
-      toDisplayWeight, toDisplayHeight, toKg, toCm,
-      weightUnit, heightUnit,
-      formatWeight, formatHeight,
-      parseWeightToKg, parseHeightToCm,
-      weightRange, heightRange,
-      weightPlaceholder, heightPlaceholder,
-      weightLabel, heightLabel,
-    }}>
+    <UnitContext.Provider value={value}>
       {children}
     </UnitContext.Provider>
   );

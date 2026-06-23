@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
 
@@ -156,11 +156,16 @@ export function GamificationProvider({ children }) {
 
   const isMissionDone = useCallback((id) => completedMissions.includes(id), [completedMissions]);
 
+  const value = useMemo(() => ({
+    completedMissions, dailyXP, totalXP, streak,
+    completeMission, earnXP, isMissionDone, xpFlash,
+  }), [
+    completedMissions, dailyXP, totalXP, streak,
+    completeMission, earnXP, isMissionDone, xpFlash,
+  ]);
+
   return (
-    <GamificationContext.Provider value={{
-      completedMissions, dailyXP, totalXP, streak,
-      completeMission, earnXP, isMissionDone, xpFlash,
-    }}>
+    <GamificationContext.Provider value={value}>
       {children}
     </GamificationContext.Provider>
   );

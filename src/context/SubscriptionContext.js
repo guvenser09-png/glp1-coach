@@ -3,7 +3,7 @@
 // Critical: addCustomerInfoUpdateListener keeps isPremium in sync after purchase,
 // restore, or server-side subscription change without requiring an app restart.
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { Platform, Linking } from 'react-native';
 import { REVENUECAT_API_KEY } from '../config';
 
@@ -182,21 +182,35 @@ export function SubscriptionProvider({ children }) {
     Linking.openURL('https://apps.apple.com/account/subscriptions');
   }, []);
 
+  const value = useMemo(
+    () => ({
+      isPremium,
+      isLoaded,
+      trialEndsAt,
+      subscriptionPlan,
+      offerings,
+      subscribe,
+      restorePurchases,
+      refreshCustomerInfo,
+      checkAccess,
+      manageSubscription,
+    }),
+    [
+      isPremium,
+      isLoaded,
+      trialEndsAt,
+      subscriptionPlan,
+      offerings,
+      subscribe,
+      restorePurchases,
+      refreshCustomerInfo,
+      checkAccess,
+      manageSubscription,
+    ]
+  );
+
   return (
-    <SubscriptionContext.Provider
-      value={{
-        isPremium,
-        isLoaded,
-        trialEndsAt,
-        subscriptionPlan,
-        offerings,
-        subscribe,
-        restorePurchases,
-        refreshCustomerInfo,
-        checkAccess,
-        manageSubscription,
-      }}
-    >
+    <SubscriptionContext.Provider value={value}>
       {children}
     </SubscriptionContext.Provider>
   );

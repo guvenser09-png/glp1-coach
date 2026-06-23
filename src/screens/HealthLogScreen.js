@@ -169,6 +169,8 @@ export default function HealthLogScreen({ navigation }) {
         const cm = parseCm(fields[f.key]);
         if (cm != null) payload[f.key] = cm;
       });
+      // Only after the write resolves do we update the list, clear the form,
+      // and show success.
       const updated = await saveMeasurement(user.uid, payload);
       setMeasurements(Array.isArray(updated) ? updated : []);
       setFields({ waist: '', arm: '', neck: '', chest: '', hip: '' });
@@ -179,9 +181,11 @@ export default function HealthLogScreen({ navigation }) {
           : 'Your body measurements have been updated.'
       );
     } catch {
+      // Write failed — no success alert, form is intentionally not cleared so
+      // the user keeps their input and can retry.
       Alert.alert(
         isTr ? 'Hata' : 'Error',
-        isTr ? 'Ölçüm kaydedilemedi.' : 'Could not save measurement.'
+        isTr ? 'Kaydedilemedi, tekrar deneyin.' : 'Couldn\'t save, please try again.'
       );
     } finally {
       setSavingMeasurement(false);
@@ -198,6 +202,7 @@ export default function HealthLogScreen({ navigation }) {
         type: symptomType,
         severity,
       });
+      // Success path runs only after the awaited write resolves.
       setSymptoms(Array.isArray(updated) ? updated : []);
       Alert.alert(
         isTr ? '📝 Belirti Kaydedildi' : '📝 Symptom Logged',
@@ -206,9 +211,10 @@ export default function HealthLogScreen({ navigation }) {
           : 'Your symptom has been added to the log.'
       );
     } catch {
+      // Write failed — no success alert, symptom is not added to the log.
       Alert.alert(
         isTr ? 'Hata' : 'Error',
-        isTr ? 'Belirti kaydedilemedi.' : 'Could not log symptom.'
+        isTr ? 'Kaydedilemedi, tekrar deneyin.' : 'Couldn\'t save, please try again.'
       );
     } finally {
       setLoggingSymptom(false);

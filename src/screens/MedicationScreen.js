@@ -268,9 +268,10 @@ export default function MedicationScreen({ navigation }) {
         isTr ? 'İlaç bilgileriniz güncellendi.' : 'Your medication details have been updated.'
       );
     } catch {
+      // Write failed — do NOT show success and do NOT keep the value as saved.
       Alert.alert(
         isTr ? 'Hata' : 'Error',
-        isTr ? 'Kaydedilemedi. Lütfen tekrar deneyin.' : 'Could not save. Please try again.'
+        isTr ? 'Kaydedilemedi, tekrar deneyin.' : 'Couldn\'t save, please try again.'
       );
     } finally {
       setSaving(false);
@@ -300,9 +301,10 @@ export default function MedicationScreen({ navigation }) {
         isTr ? 'Bugünkü dozunuz kaydedildi.' : 'Today\'s dose has been recorded.'
       );
     } catch {
+      // Write failed — no success alert, dose is not recorded.
       Alert.alert(
         isTr ? 'Hata' : 'Error',
-        isTr ? 'Doz kaydedilemedi.' : 'Could not log dose.'
+        isTr ? 'Kaydedilemedi, tekrar deneyin.' : 'Couldn\'t save, please try again.'
       );
     } finally {
       setLogging(false);
@@ -357,7 +359,13 @@ export default function MedicationScreen({ navigation }) {
           );
         }
       } catch {
+        // Persisting the profile (or scheduling) failed — keep the toggle off
+        // and tell the user instead of silently appearing to have succeeded.
         setReminderOn(false);
+        Alert.alert(
+          isTr ? 'Hata' : 'Error',
+          isTr ? 'Kaydedilemedi, tekrar deneyin.' : 'Couldn\'t save, please try again.'
+        );
       }
     } else {
       try {
@@ -460,9 +468,10 @@ export default function MedicationScreen({ navigation }) {
           : `New dose recorded as ${mg} mg.`
       );
     } catch {
+      // Write failed — do NOT advance the form/profile as if it saved.
       Alert.alert(
         isTr ? 'Hata' : 'Error',
-        isTr ? 'Doz değişikliği kaydedilemedi.' : 'Could not record dose change.'
+        isTr ? 'Kaydedilemedi, tekrar deneyin.' : 'Couldn\'t save, please try again.'
       );
     } finally {
       setSavingDoseChange(false);
