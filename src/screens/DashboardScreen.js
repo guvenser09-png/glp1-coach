@@ -498,8 +498,7 @@ export default function DashboardScreen({ navigation }) {
             0
           );
           // Pass real protein-adequacy data only — no fabricated muscle-loss
-          // percentage (audit #10). The notification service has its own safe
-          // default for musclePct if any legacy copy still references it.
+          // percentage (audit #10).
           await schedulePersonalizedNotifications(
             {
               currentWeight: latestWeight,

@@ -108,7 +108,6 @@ async function generateMotivationViaAI(userData, language) {
     analyzedTodayProtein = 0,
     avgProteinRatio = 0.5,
     weeklyChange = 0,
-    musclePct = 20,
   } = userData;
 
   const remaining = Math.max(0, proteinTarget - analyzedTodayProtein);
@@ -123,8 +122,8 @@ Title max 40 chars, body max 100 chars. Use real numbers, add emoji, suggest 1 c
 Return JSON only: {"title":"...","body":"..."}`;
 
   const userContext = isTr
-    ? `Kilo: ${currentWeight || '?'}kg | Protein hedefi: ${proteinTarget}g | Bugün: ${analyzedTodayProtein}g (%${proteinPct}) | Kalan: ${remaining}g | Haftalık kayıp: ${weeklyChange.toFixed(1)}kg | Kas kaybı: %${musclePct} | 7g ort protein: %${Math.round(avgProteinRatio * 100)}`
-    : `Weight: ${currentWeight || '?'}kg | Protein target: ${proteinTarget}g | Today: ${analyzedTodayProtein}g (${proteinPct}%) | Remaining: ${remaining}g | Weekly loss: ${weeklyChange.toFixed(1)}kg | Muscle loss: ${musclePct}% | 7d avg protein: ${Math.round(avgProteinRatio * 100)}%`;
+    ? `Kilo: ${currentWeight || '?'}kg | Protein hedefi: ${proteinTarget}g | Bugün: ${analyzedTodayProtein}g (%${proteinPct}) | Kalan: ${remaining}g | Haftalık kayıp: ${weeklyChange.toFixed(1)}kg | 7g ort protein: %${Math.round(avgProteinRatio * 100)}`
+    : `Weight: ${currentWeight || '?'}kg | Protein target: ${proteinTarget}g | Today: ${analyzedTodayProtein}g (${proteinPct}%) | Remaining: ${remaining}g | Weekly loss: ${weeklyChange.toFixed(1)}kg | 7d avg protein: ${Math.round(avgProteinRatio * 100)}%`;
 
   try {
     // Route through the secure proxy — no client-side key. callAIChat returns the
