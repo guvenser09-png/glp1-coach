@@ -51,7 +51,6 @@ account-bound ones, "Used for tracking" = No for everything.
 | Health & Fitness | Fitness (active energy / steps from HealthKit) | Yes | No |
 | Contact Info | Email address | Yes | No |
 | User Content | Photos (meal photos) | Yes | No |
-| User Content | Other user content (community posts) | Yes | No |
 | Identifiers | User ID | Yes | No |
 | Diagnostics | Crash data + Performance (only if Sentry enabled) | No | No |
 

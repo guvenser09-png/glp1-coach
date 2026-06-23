@@ -26,8 +26,6 @@ You provide this data when you use the app:
   calories burned, and we write the weight you log back to Apple Health to keep it in
   sync. HealthKit data is used only inside the app for your own tracking; it is never
   used for advertising and never shared with third parties.
-- **Community content (optional):** posts you publish, optional meal photos, likes,
-  reports and blocks.
 - **Diagnostics (optional):** if enabled, crash and performance data via Sentry, used
   only to fix bugs. This is not linked to your health data.
 
@@ -53,7 +51,7 @@ your AI requests. If AI is unavailable, the app falls back to local estimation.
 ## 5. Sharing
 We do not sell your data. We share it only with the processors needed to run the app:
 Supabase (hosting/database/auth), OpenAI (AI features, as above), and — if enabled —
-Sentry (diagnostics). Community posts you choose to publish are visible to other users.
+Sentry (diagnostics).
 
 ## 6. Your rights (KVKK / GDPR)
 - **Access & portability:** your data is yours; contact us for an export.
@@ -86,8 +84,8 @@ sakladığımızı ve haklarınızı açıklar.
   Supabase Auth ile); sağlık/fitness verileri (kilo, boy, hedef, protein hedefleri,
   öğün kayıtları + isteğe bağlı öğün fotoğrafları, ilaç profili/doz/enjeksiyon
   takvimi, doz kayıtları, vücut ölçümleri, semptom kayıtları); isteğe bağlı Apple
-  Health/Apple Watch (kilo, vücut kompozisyonu, aktif enerji, nabız); topluluk
-  içeriği; isteğe bağlı tanılama (Sentry).
+  Health/Apple Watch (kilo, vücut kompozisyonu, aktif enerji, nabız); isteğe bağlı
+  tanılama (Sentry).
 - **Reklam/çapraz uygulama takibi YOK.**
 - **Saklama:** veriler Supabase bulut veritabanında (EU) tutulur; her tabloda
   satır-düzeyi güvenlik (RLS) ile yalnızca kendi verinize erişebilirsiniz; bağlantılar
