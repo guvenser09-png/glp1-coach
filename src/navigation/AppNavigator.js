@@ -20,7 +20,6 @@ import MealAnalysisScreen from '../screens/MealAnalysisScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import DietPlansScreen from '../screens/DietPlansScreen';
 import MedicationScreen from '../screens/MedicationScreen';
-import SocialScreen from '../screens/SocialScreen';
 import HealthLogScreen from '../screens/HealthLogScreen';
 import WeightScreen from '../screens/WeightScreen';
 import RewardsScreen from '../screens/RewardsScreen';
@@ -97,8 +96,6 @@ function MainTabs() {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'MealAnalysis') {
             iconName = focused ? 'today' : 'today-outline';
-          } else if (route.name === 'Social') {
-            iconName = focused ? 'people' : 'people-outline';
           } else if (route.name === 'DietPlans') {
             iconName = focused ? 'restaurant' : 'restaurant-outline';
           } else if (route.name === 'Settings') {
@@ -123,14 +120,6 @@ function MainTabs() {
         options={{
           tabBarLabel: isTr ? 'Günlük' : 'Daily',
           tabBarAccessibilityLabel: isTr ? 'Günlük takip sekmesi' : 'Daily log tab',
-        }}
-      />
-      <Tab.Screen
-        name="Social"
-        component={SocialScreen}
-        options={{
-          tabBarLabel: isTr ? 'Topluluk' : 'Community',
-          tabBarAccessibilityLabel: isTr ? 'Topluluk sekmesi' : 'Community tab',
         }}
       />
       <Tab.Screen
