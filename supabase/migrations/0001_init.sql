@@ -419,3 +419,11 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- ===========================================================================
+-- Harden SECURITY DEFINER functions: they are triggers, not RPC. Revoke EXECUTE
+-- so they cannot be called via PostgREST (/rest/v1/rpc/...). Trigger execution
+-- does not require an EXECUTE grant, so the triggers above keep working.
+-- ===========================================================================
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+revoke execute on function public.sync_post_likes_count() from public, anon, authenticated;
