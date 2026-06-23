@@ -304,7 +304,7 @@ export default function WeightScreen({ navigation }) {
       {/* Back header */}
       <View style={styles.header}>
         <Pressable
-          onPress={() => navigation.goBack()}
+          onPress={() => navigation?.goBack?.()}
           accessibilityRole="button"
           accessibilityLabel={isTr ? 'Geri' : 'Back'}
           hitSlop={10}

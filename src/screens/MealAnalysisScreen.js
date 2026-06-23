@@ -332,7 +332,7 @@ export default function MealAnalysisScreen({ navigation }) {
 
   const proteinTarget = profile?.proteinTarget ?? 120;
 
-  async function openChat() {
+  function doOpenChat() {
     setChatMessages([{
       role: 'assistant',
       content: isTr
@@ -340,6 +340,17 @@ export default function MealAnalysisScreen({ navigation }) {
         : `Hey! I'm your GLP-1 Coach Wellness Guide 💪 I can see your meals today. How can I help you?`,
     }]);
     setChatVisible(true);
+  }
+
+  async function openChat() {
+    // Gate AI coach behind one-time consent (chat text leaves the device for AI).
+    const consentGiven = await AsyncStorage.getItem('ai_consent_given');
+    if (!consentGiven) {
+      setPendingAnalysis('chat');
+      setAiConsentVisible(true);
+      return;
+    }
+    doOpenChat();
   }
 
   async function handleSendChat() {
@@ -519,6 +530,18 @@ export default function MealAnalysisScreen({ navigation }) {
       Alert.alert('', isTr ? 'Yediğiniz yemeği açıklayın.' : 'Describe what you ate.');
       return;
     }
+    // Gate behind one-time consent: when AI is configured the typed meal text is
+    // sent to OpenAI, so require the same consent the photo flow uses.
+    const consentGiven = await AsyncStorage.getItem('ai_consent_given');
+    if (!consentGiven) {
+      setPendingAnalysis('manual');
+      setAiConsentVisible(true);
+      return;
+    }
+    runManualAnalyze();
+  }
+
+  async function runManualAnalyze() {
     if (!checkFreeLimit()) return;
     setManualAnalyzing(true);
     setManualResult(null);
@@ -825,7 +848,11 @@ export default function MealAnalysisScreen({ navigation }) {
         onAccept={async () => {
           await AsyncStorage.setItem('ai_consent_given', 'true');
           setAiConsentVisible(false);
-          if (pendingAnalysis === 'image') runAnalyze();
+          const pending = pendingAnalysis;
+          setPendingAnalysis(null);
+          if (pending === 'image') runAnalyze();
+          else if (pending === 'manual') runManualAnalyze();
+          else if (pending === 'chat') doOpenChat();
         }}
         onDecline={() => {
           setAiConsentVisible(false);

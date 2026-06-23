@@ -48,19 +48,6 @@ export interface MedicationProfile {
   reminderMinute?: number | null;
 }
 
-export interface SocialPost {
-  id: string;
-  authorId: string;
-  authorName?: string;
-  type: 'injection' | 'meal' | 'general';
-  text: string;
-  mealPhotoUri?: string;
-  protein?: number;
-  likes: number;
-  likedByMe?: boolean;
-  createdAt: string;
-}
-
 // OpenAI-style chat message (used by the AI proxy client).
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';

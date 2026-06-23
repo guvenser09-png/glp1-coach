@@ -41,8 +41,8 @@ export default function AIConsentModal({ visible, onAccept, onDecline, language 
               </Text>
               <Text style={styles.sectionBody}>
                 {isTr
-                  ? 'OpenAI, L.L.C. — Yapay zeka analizi için. Verileriniz model eğitiminde kullanılmaz.'
-                  : 'OpenAI, L.L.C. — For AI analysis only. Your data is not used for model training.'}
+                  ? 'OpenAI, L.L.C. — yalnızca yapay zekâ analizi için. OpenAI, API veri kullanım politikası gereği API verilerini modellerini eğitmek için kullanmaz.'
+                  : 'OpenAI, L.L.C. — for AI analysis only. Per OpenAI\'s API data-usage policy, API data is not used to train their models.'}
               </Text>
               <TouchableOpacity
                 onPress={() => Linking.openURL('https://openai.com/policies/privacy-policy')}
@@ -62,8 +62,8 @@ export default function AIConsentModal({ visible, onAccept, onDecline, language 
               </Text>
               <Text style={styles.sectionBody}>
                 {isTr
-                  ? 'Fotoğraflarınız OpenAI\'ya gönderilir ve analiz tamamlandıktan sonra silinir. GLP-1 Coach sunucularında saklanmaz.'
-                  : 'Your photos are sent to OpenAI and deleted after analysis is complete. They are not stored on GLP-1 Coach servers.'}
+                  ? 'Fotoğraflarınız analiz için OpenAI\'ya gönderilir ve GLP-1 Coach sunucularında saklanmaz. OpenAI tarafındaki saklama, OpenAI\'nın API veri politikasına tabidir.'
+                  : 'Your photos are sent to OpenAI for analysis and are not stored on GLP-1 Coach servers. Any retention at OpenAI is governed by OpenAI\'s API data policy.'}
               </Text>
             </View>
           </ScrollView>

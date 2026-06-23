@@ -1424,8 +1424,14 @@ export default function DietPlansScreen({ navigation }) {
         mealType: labels[mealKey], emoji: emojis[mealKey],
         protein: meal.protein, calories: meal.calories,
         prepTime: meal.prepTime || '—',
-        ingredients: { en: meal.ingredients || [], tr: meal.ingredients || [] },
-        steps: { en: meal.steps || [], tr: meal.steps || [] },
+        ingredients: {
+          en: Array.isArray(meal.ingredients) ? meal.ingredients : [],
+          tr: Array.isArray(meal.ingredients) ? meal.ingredients : [],
+        },
+        steps: {
+          en: Array.isArray(meal.steps) ? meal.steps : [],
+          tr: Array.isArray(meal.steps) ? meal.steps : [],
+        },
         isAI: true,
       });
     } else {
@@ -1439,7 +1445,7 @@ export default function DietPlansScreen({ navigation }) {
     const emojis = { breakfast: '🌅', lunch: '☀️', dinner: '🌙', snack: '🍎' };
     const mealName = isAI ? meal.name : (isTr ? meal.tr : meal.en);
     const mealIngredients = isAI
-      ? (meal.ingredients || []).join(', ')
+      ? (Array.isArray(meal.ingredients) ? meal.ingredients : []).join(', ')
       : (isTr ? meal.ingredients.tr : meal.ingredients.en).join(', ');
 
     return (

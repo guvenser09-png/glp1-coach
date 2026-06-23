@@ -13,12 +13,13 @@ qualified healthcare professional before making any decision about your medicati
 diet, or treatment, and in any medical emergency.
 
 ## 2. Your account
-You are responsible for keeping your login credentials secure and for the content you
-post in the community. Do not post others' personal/medical information.
+You are responsible for keeping your login credentials secure and for the data you
+enter into the app. Do not enter another person's personal or medical information
+without their consent.
 
 ## 3. Acceptable use
 Do not misuse the app, attempt to break its security, or use it to harm others. We may
-remove community content and suspend accounts that violate these terms.
+suspend accounts that violate these terms.
 
 ## 4. AI features
 AI-generated content (meal analysis, coach replies, suggestions) may be inaccurate or
@@ -45,10 +46,10 @@ Support email: support@glp1coach.app
   tahminleri yaklaşıktır ve **klinik ölçüm değildir.** Uygulama ilaç dozu **önermez/
   değiştirmez.** İlaç, diyet veya tedaviyle ilgili her karardan önce ve her acil
   durumda doktorunuza danışın.
-- **Hesabınız:** giriş bilgilerinizin güvenliğinden ve paylaştığınız içerikten siz
-  sorumlusunuz; başkalarının kişisel/tıbbi bilgisini paylaşmayın.
+- **Hesabınız:** giriş bilgilerinizin güvenliğinden ve uygulamaya girdiğiniz
+  verilerden siz sorumlusunuz; başkasının kişisel/tıbbi bilgisini rızası olmadan girmeyin.
 - **Uygun kullanım:** uygulamayı kötüye kullanmayın, güvenliğini kırmaya çalışmayın.
-  Kuralları ihlal eden içeriği kaldırabilir, hesapları askıya alabiliriz.
+  Kuralları ihlal eden hesapları askıya alabiliriz.
 - **Yapay zekâ:** AI içeriği hatalı/eksik olabilir; yalnızca bilgilendirme amaçlıdır.
 - **Sorumluluk sınırı:** yasanın izin verdiği ölçüde, uygulamanın kullanımından doğan
   sağlık sonucu/zarardan sorumlu değiliz. Uygulama "olduğu gibi" sunulur.

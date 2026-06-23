@@ -35,8 +35,7 @@ you across other apps or websites.
 ## 3. How your data is stored and protected
 - Your data is stored in our Supabase cloud database (not only on your device).
 - **Row Level Security** is enforced on every table: you can only read and write your
-  own rows. Community posts are publicly readable by design; everything else is
-  private to your account.
+  own rows. Your data is private to your account.
 - Connections use HTTPS/TLS. The app uses only standard encryption
   (ITSAppUsesNonExemptEncryption = false).
 

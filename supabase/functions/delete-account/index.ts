@@ -64,10 +64,6 @@ function errorResponse(error: string, message: string, status: number): Response
 // schema is ON DELETE CASCADE so the auth.admin.deleteUser at the end would also
 // clean up; we delete explicitly first for an auditable, complete wipe.
 const OWNED_TABLES: Array<{ table: string; column: string }> = [
-  { table: 'post_likes', column: 'user_id' },
-  { table: 'post_reports', column: 'reporter_id' },
-  { table: 'blocked_users', column: 'blocker_id' },
-  { table: 'social_posts', column: 'author_id' },
   { table: 'symptom_logs', column: 'user_id' },
   { table: 'body_measurements', column: 'user_id' },
   { table: 'dose_changes', column: 'user_id' },
