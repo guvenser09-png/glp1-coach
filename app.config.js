@@ -97,11 +97,14 @@ export default {
     ],
     scheme: "glp1coach",
     extra: {
-      // NOTE: never put the OpenAI secret key here — anything in `extra` ships in
-      // the client bundle. The OpenAI key lives ONLY on the Supabase edge proxy.
-      // Supabase URL + publishable key are safe to ship (public by design).
-      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || "https://jzfjpwoxglacrqxfhvjd.supabase.co",
-      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "sb_publishable_jL_RoPuZesNFM-Vwt3sB1g_UEHz38t4",
+      // SECURITY (audit #1): no hardcoded project credentials here. Anything in
+      // `extra` ships in the client bundle, so it must come ONLY from env. The
+      // Supabase URL + publishable (anon) key are safe to ship (public by design),
+      // but env-only keeps the app portable across projects and out of git.
+      // The OpenAI secret key NEVER lives here — it stays on the Supabase edge proxy.
+      // Set these in .env (local) and as EAS secrets (builds). See .env.example.
+      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || "",
+      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "",
       revenuecatApiKey: process.env.REVENUECAT_API_KEY || "",
       eas: {
         projectId: "b328678b-4d82-4468-9028-6890cf5aad20",

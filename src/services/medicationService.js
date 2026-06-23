@@ -60,7 +60,14 @@ function mapProfileRow(row) {
 export async function getMedicationProfile(uid) {
   if (!isSupabaseConfigured()) return null;
   try {
-    const { data, error } = await supabase.from('medication_profile').select('*').maybeSingle();
+    // (audit #5) defense-in-depth: filter by user_id explicitly, not RLS alone.
+    const userId = await resolveUserId(uid);
+    if (!userId) return null;
+    const { data, error } = await supabase
+      .from('medication_profile')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
     if (error) return null;
     return mapProfileRow(data);
   } catch {
@@ -75,49 +82,50 @@ export async function saveMedicationProfile(uid, profile) {
     ...profile,
   });
   if (!isSupabaseConfigured()) return merged;
-  try {
-    const userId = await resolveUserId(uid);
-    if (!userId) return merged;
-    await supabase.from('medication_profile').upsert({
-      user_id: userId,
-      drug: merged.drug,
-      dose_mg: merged.doseMg,
-      dose_unit: merged.doseUnit,
-      frequency: merged.frequency,
-      injection_weekday: merged.injectionWeekday,
-      status: merged.status,
-      reminder_hour: merged.reminderHour ?? null,
-      reminder_minute: merged.reminderMinute ?? null,
-      start_date: merged.startDate ? String(merged.startDate).split('T')[0] : null,
-    }, { onConflict: 'user_id' });
-  } catch {
-    // best-effort
-  }
+  const userId = await resolveUserId(uid);
+  if (!userId) return merged;
+  const { error } = await supabase.from('medication_profile').upsert({
+    user_id: userId,
+    drug: merged.drug,
+    dose_mg: merged.doseMg,
+    dose_unit: merged.doseUnit,
+    frequency: merged.frequency,
+    injection_weekday: merged.injectionWeekday,
+    status: merged.status,
+    reminder_hour: merged.reminderHour ?? null,
+    reminder_minute: merged.reminderMinute ?? null,
+    start_date: merged.startDate ? String(merged.startDate).split('T')[0] : null,
+  }, { onConflict: 'user_id' });
+  // (audit #7) surface write failures
+  if (error) throw new Error(error.message);
   return merged;
 }
 
 // ── Dose logs ──────────────────────────────────────────────────────────────────
 export async function logDose(uid, { date, dose } = {}) {
   if (!isSupabaseConfigured()) return [];
-  try {
-    const userId = await resolveUserId(uid);
-    if (!userId) return await getDoseLogs(uid);
-    await supabase.from('dose_logs').insert({
-      user_id: userId,
-      dose: dose || '',
-      date: date || todayDateString(),
-    });
-  } catch {
-    // ignore
-  }
+  const userId = await resolveUserId(uid);
+  if (!userId) return await getDoseLogs(uid);
+  const { error } = await supabase.from('dose_logs').insert({
+    user_id: userId,
+    dose: dose || '',
+    date: date || todayDateString(),
+  });
+  // (audit #7) surface write failures
+  if (error) throw new Error(error.message);
   return await getDoseLogs(uid);
 }
 
 export async function getDoseLogs(uid) {
   if (!isSupabaseConfigured()) return [];
   try {
+    // (audit #5) defense-in-depth: filter by user_id explicitly, not RLS alone.
+    const userId = await resolveUserId(uid);
+    if (!userId) return [];
     const { data, error } = await supabase
-      .from('dose_logs').select('*').order('date', { ascending: true });
+      .from('dose_logs').select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: true });
     if (error || !Array.isArray(data)) return [];
     return data.map((r) => ({ date: r.date, dose: r.dose }));
   } catch {
@@ -129,8 +137,13 @@ export async function getDoseLogs(uid) {
 export async function getDoseChanges(uid) {
   if (!isSupabaseConfigured()) return [];
   try {
+    // (audit #5) defense-in-depth: filter by user_id explicitly, not RLS alone.
+    const userId = await resolveUserId(uid);
+    if (!userId) return [];
     const { data, error } = await supabase
-      .from('dose_changes').select('*').order('date', { ascending: true });
+      .from('dose_changes').select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: true });
     if (error || !Array.isArray(data)) return [];
     return data.map((r) => ({ date: r.date, doseMg: r.dose_mg == null ? null : Number(r.dose_mg) }));
   } catch {
@@ -145,18 +158,18 @@ export async function recordDoseChange(uid, { doseMg, date } = {}) {
     doseMg: numericDose == null || Number.isNaN(numericDose) ? null : numericDose,
   };
   if (!isSupabaseConfigured()) return [entry];
-  try {
-    const userId = await resolveUserId(uid);
-    if (userId) {
-      await supabase.from('dose_changes').insert({ user_id: userId, dose_mg: entry.doseMg, date: entry.date });
-      // Keep the profile's current dose in sync with the latest change.
-      const existing = await getMedicationProfile(uid);
-      if (existing) {
-        await saveMedicationProfile(uid, { ...existing, doseMg: entry.doseMg });
-      }
+  const userId = await resolveUserId(uid);
+  if (userId) {
+    const { error } = await supabase
+      .from('dose_changes')
+      .insert({ user_id: userId, dose_mg: entry.doseMg, date: entry.date });
+    // (audit #7) surface write failures
+    if (error) throw new Error(error.message);
+    // Keep the profile's current dose in sync with the latest change.
+    const existing = await getMedicationProfile(uid);
+    if (existing) {
+      await saveMedicationProfile(uid, { ...existing, doseMg: entry.doseMg });
     }
-  } catch {
-    // ignore
   }
   return await getDoseChanges(uid);
 }

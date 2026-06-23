@@ -42,13 +42,13 @@ export async function saveMeasurement(uid, { date, waist, arm, neck, chest, hip 
     if (cm != null) row[field] = cm;
   }
   if (!isSupabaseConfigured()) return await getMeasurements(uid);
-  try {
-    const userId = await resolveUserId(uid);
-    if (userId) {
-      await supabase.from('body_measurements').insert({ user_id: userId, ...row });
-    }
-  } catch {
-    // ignore
+  const userId = await resolveUserId(uid);
+  if (userId) {
+    const { error } = await supabase
+      .from('body_measurements')
+      .insert({ user_id: userId, ...row });
+    // (audit #7) surface write failures
+    if (error) throw new Error(error.message);
   }
   return await getMeasurements(uid);
 }
@@ -56,8 +56,13 @@ export async function saveMeasurement(uid, { date, waist, arm, neck, chest, hip 
 export async function getMeasurements(uid) {
   if (!isSupabaseConfigured()) return [];
   try {
+    // (audit #5) defense-in-depth: filter by user_id explicitly, not RLS alone.
+    const userId = await resolveUserId(uid);
+    if (!userId) return [];
     const { data, error } = await supabase
-      .from('body_measurements').select('*').order('date', { ascending: true });
+      .from('body_measurements').select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: true });
     if (error || !Array.isArray(data)) return [];
     return data.map((r) => ({
       date: r.date, waist: r.waist, arm: r.arm, neck: r.neck, chest: r.chest, hip: r.hip,
@@ -75,13 +80,13 @@ export async function logSymptom(uid, { date, type, severity } = {}) {
     severity: parseSeverity(severity),
   };
   if (!isSupabaseConfigured()) return await getSymptoms(uid);
-  try {
-    const userId = await resolveUserId(uid);
-    if (userId) {
-      await supabase.from('symptom_logs').insert({ user_id: userId, ...entry });
-    }
-  } catch {
-    // ignore
+  const userId = await resolveUserId(uid);
+  if (userId) {
+    const { error } = await supabase
+      .from('symptom_logs')
+      .insert({ user_id: userId, ...entry });
+    // (audit #7) surface write failures
+    if (error) throw new Error(error.message);
   }
   return await getSymptoms(uid);
 }
@@ -89,8 +94,13 @@ export async function logSymptom(uid, { date, type, severity } = {}) {
 export async function getSymptoms(uid) {
   if (!isSupabaseConfigured()) return [];
   try {
+    // (audit #5) defense-in-depth: filter by user_id explicitly, not RLS alone.
+    const userId = await resolveUserId(uid);
+    if (!userId) return [];
     const { data, error } = await supabase
-      .from('symptom_logs').select('*').order('date', { ascending: false });
+      .from('symptom_logs').select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false });
     if (error || !Array.isArray(data)) return [];
     return data.map((r) => ({ date: r.date, type: r.type, severity: r.severity }));
   } catch {

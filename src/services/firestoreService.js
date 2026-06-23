@@ -63,10 +63,14 @@ function mapProfileToRow(userId, data) {
 export async function getUserProfile(userId) {
   if (!isSupabaseConfigured()) return null;
   try {
-    // RLS already scopes this to the signed-in user; maybeSingle() tolerates "no row yet".
+    // (audit #5) defense-in-depth: filter by user_id explicitly, not RLS alone.
+    const uid = await resolveUserId(userId);
+    if (!uid) return null;
+    // maybeSingle() tolerates "no row yet".
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
+      .eq('user_id', uid)
       .maybeSingle();
     if (error) return null;
     return mapProfileRow(data);
@@ -77,17 +81,14 @@ export async function getUserProfile(userId) {
 
 export async function saveUserProfile(userId, data) {
   if (!isSupabaseConfigured()) return data;
-  try {
-    const uid = await resolveUserId(userId);
-    if (!uid) return data;
-    const { error } = await supabase
-      .from('profiles')
-      .upsert(mapProfileToRow(uid, data), { onConflict: 'user_id' });
-    if (error) return data;
-    return data;
-  } catch {
-    return data;
-  }
+  const uid = await resolveUserId(userId);
+  if (!uid) return data;
+  const { error } = await supabase
+    .from('profiles')
+    .upsert(mapProfileToRow(uid, data), { onConflict: 'user_id' });
+  // (audit #7) surface write failures — never let a failed save look successful.
+  if (error) throw new Error(error.message);
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -97,9 +98,13 @@ export async function saveUserProfile(userId, data) {
 export async function getWeightLogs(userId) {
   if (!isSupabaseConfigured()) return [];
   try {
+    // (audit #5) defense-in-depth: filter by user_id explicitly, not RLS alone.
+    const uid = await resolveUserId(userId);
+    if (!uid) return [];
     const { data, error } = await supabase
       .from('weight_logs')
       .select('*')
+      .eq('user_id', uid)
       .order('date', { ascending: true });
     if (error || !Array.isArray(data)) return [];
     return data.map((row) => ({ date: row.date, weight: row.weight }));
@@ -110,19 +115,16 @@ export async function getWeightLogs(userId) {
 
 export async function saveWeightLog(userId, weight) {
   if (!isSupabaseConfigured()) return null;
-  try {
-    const uid = await resolveUserId(userId);
-    if (!uid) return null;
-    // One entry per day: upsert on (user_id, date) so re-logging today updates
-    // instead of creating a duplicate chart point.
-    const { error } = await supabase
-      .from('weight_logs')
-      .upsert({ user_id: uid, weight, date: today() }, { onConflict: 'user_id,date' });
-    if (error) return null;
-    return { date: today(), weight };
-  } catch {
-    return null;
-  }
+  const uid = await resolveUserId(userId);
+  if (!uid) return null;
+  // One entry per day: upsert on (user_id, date) so re-logging today updates
+  // instead of creating a duplicate chart point.
+  const { error } = await supabase
+    .from('weight_logs')
+    .upsert({ user_id: uid, weight, date: today() }, { onConflict: 'user_id,date' });
+  // (audit #7) surface write failures
+  if (error) throw new Error(error.message);
+  return { date: today(), weight };
 }
 
 // ---------------------------------------------------------------------------
@@ -145,9 +147,13 @@ function mapMealRow(row) {
 export async function getMealLogs(userId) {
   if (!isSupabaseConfigured()) return [];
   try {
+    // (audit #5) defense-in-depth: filter by user_id explicitly, not RLS alone.
+    const uid = await resolveUserId(userId);
+    if (!uid) return [];
     const { data, error } = await supabase
       .from('meal_logs')
       .select('*')
+      .eq('user_id', uid)
       .order('date', { ascending: true })
       .order('id', { ascending: true });
     if (error || !Array.isArray(data)) return [];
@@ -159,24 +165,21 @@ export async function getMealLogs(userId) {
 
 export async function saveMealAnalysis(userId, analysisData) {
   if (!isSupabaseConfigured()) return null;
-  try {
-    const uid = await resolveUserId(userId);
-    if (!uid) return null;
-    const a = analysisData || {};
-    const { error } = await supabase.from('meal_logs').insert({
-      user_id: uid,
-      protein: a.protein,
-      calories: a.calories,
-      food_type: a.foodType,
-      portion_size: a.portionSize,
-      image_uri: a.imageUri,
-      date: today(),
-    });
-    if (error) return null;
-    return analysisData;
-  } catch {
-    return null;
-  }
+  const uid = await resolveUserId(userId);
+  if (!uid) return null;
+  const a = analysisData || {};
+  const { error } = await supabase.from('meal_logs').insert({
+    user_id: uid,
+    protein: a.protein,
+    calories: a.calories,
+    food_type: a.foodType,
+    portion_size: a.portionSize,
+    image_uri: a.imageUri,
+    date: today(),
+  });
+  // (audit #7) surface write failures
+  if (error) throw new Error(error.message);
+  return analysisData;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,9 +194,13 @@ export async function saveMealAnalysis(userId, analysisData) {
 export async function getTodayMeals(userId) {
   if (!isSupabaseConfigured()) return [];
   try {
+    // (audit #5) defense-in-depth: filter by user_id explicitly, not RLS alone.
+    const uid = await resolveUserId(userId);
+    if (!uid) return [];
     const { data, error } = await supabase
       .from('meal_logs')
       .select('*')
+      .eq('user_id', uid)
       .eq('date', today())
       .order('id', { ascending: true });
     if (error || !Array.isArray(data)) return [];
@@ -207,56 +214,64 @@ export async function getTodayMeals(userId) {
 // (camelCase out, including the new id). Returns null on error.
 export async function addMeal(userId, meal) {
   if (!isSupabaseConfigured()) return null;
-  try {
-    const uid = await resolveUserId(userId);
-    if (!uid) return null;
-    const m = meal || {};
-    const { data, error } = await supabase
-      .from('meal_logs')
-      .insert({
-        user_id: uid,
-        protein: m.protein,
-        calories: m.calories,
-        food_type: m.foodType,
-        portion_size: m.portionSize,
-        image_uri: m.imageUri,
-        date: today(),
-      })
-      .select()
-      .single();
-    if (error || !data) return null;
-    return mapMealRow(data);
-  } catch {
-    return null;
-  }
+  const uid = await resolveUserId(userId);
+  if (!uid) return null;
+  const m = meal || {};
+  const { data, error } = await supabase
+    .from('meal_logs')
+    .insert({
+      user_id: uid,
+      protein: m.protein,
+      calories: m.calories,
+      food_type: m.foodType,
+      portion_size: m.portionSize,
+      image_uri: m.imageUri,
+      date: today(),
+    })
+    .select()
+    .single();
+  // (audit #7) surface write failures
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return mapMealRow(data);
 }
 
 // deleteMeal(uid, id): remove one meal by id. RLS ensures only the owner's row
 // can be deleted. Resolves silently on error.
 export async function deleteMeal(userId, id) {
   if (!isSupabaseConfigured() || id == null) return;
-  try {
-    await supabase.from('meal_logs').delete().eq('id', id);
-  } catch {
-    // best-effort
-  }
+  // (audit #5) defense-in-depth: scope the delete to the owner explicitly.
+  const uid = await resolveUserId(userId);
+  if (!uid) return;
+  const { error } = await supabase
+    .from('meal_logs')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', uid);
+  // (audit #7) surface write failures
+  if (error) throw new Error(error.message);
 }
 
 // updateMeal(uid, id, fields): patch one meal by id. Accepts camelCase fields
 // and maps to snake_case columns (only known columns are written).
 export async function updateMeal(userId, id, fields) {
   if (!isSupabaseConfigured() || id == null) return;
-  try {
-    const f = fields || {};
-    const patch = {};
-    if (f.protein !== undefined) patch.protein = f.protein;
-    if (f.calories !== undefined) patch.calories = f.calories;
-    if (f.foodType !== undefined) patch.food_type = f.foodType;
-    if (f.portionSize !== undefined) patch.portion_size = f.portionSize;
-    if (f.imageUri !== undefined) patch.image_uri = f.imageUri;
-    if (Object.keys(patch).length === 0) return;
-    await supabase.from('meal_logs').update(patch).eq('id', id);
-  } catch {
-    // best-effort
-  }
+  const f = fields || {};
+  const patch = {};
+  if (f.protein !== undefined) patch.protein = f.protein;
+  if (f.calories !== undefined) patch.calories = f.calories;
+  if (f.foodType !== undefined) patch.food_type = f.foodType;
+  if (f.portionSize !== undefined) patch.portion_size = f.portionSize;
+  if (f.imageUri !== undefined) patch.image_uri = f.imageUri;
+  if (Object.keys(patch).length === 0) return;
+  // (audit #5) defense-in-depth: scope the update to the owner explicitly.
+  const uid = await resolveUserId(userId);
+  if (!uid) return;
+  const { error } = await supabase
+    .from('meal_logs')
+    .update(patch)
+    .eq('id', id)
+    .eq('user_id', uid);
+  // (audit #7) surface write failures
+  if (error) throw new Error(error.message);
 }

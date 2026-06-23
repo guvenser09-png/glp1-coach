@@ -26,7 +26,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { getUserProfile } from '../services/firestoreService';
 import { analyzeMealWithAI, analyzeMealWithText } from '../services/openaiService';
-import { OPENAI_API_KEY } from '../config';
+import { isAIConfigured } from '../services/aiClient';
 import { getTodayMeals, addMeal, deleteMeal, updateMeal, getMealLogs } from '../services/firestoreService';
 import { getWeightLogs } from '../services/firestoreService';
 import { calculateMuscleScore, calculateReboundRisk } from '../utils/heuristics';
@@ -526,7 +526,7 @@ export default function MealAnalysisScreen({ navigation }) {
   async function runAnalyze() {
     // No AI key → photo can't be "seen". Route to manual entry (offline estimate)
     // instead of showing an error.
-    if (!OPENAI_API_KEY) {
+    if (!isAIConfigured()) {
       Alert.alert(
         isTr ? 'Fotoğrafı Yazın' : 'Describe the Photo',
         isTr

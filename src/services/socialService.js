@@ -158,9 +158,13 @@ async function getMyLikedPostIds(userId) {
 // Internal: the set of post ids the current user has reported (hidden for me).
 async function getReportedPostIds() {
   try {
+    // (audit #5) defense-in-depth: filter by reporter_id explicitly, not RLS alone.
+    const user = await getSessionUser();
+    if (!user?.id) return [];
     const { data, error } = await supabase
       .from('post_reports')
-      .select('post_id');
+      .select('post_id')
+      .eq('reporter_id', user.id);
     if (error) return [];
     return (data || []).map((r) => r.post_id);
   } catch (e) {
@@ -212,13 +216,15 @@ export async function createPost({
       .single();
 
     if (error) {
+      // (audit #7) surface write failures — never let a failed post look successful.
       console.warn('socialService: createPost insert failed', error);
-      return null;
+      throw new Error(error.message);
     }
     return mapPost(data, false);
   } catch (e) {
+    // (audit #7) surface write failures — re-throw so the screen's try/catch alerts.
     console.warn('socialService: createPost failed', e);
-    return null;
+    throw e;
   }
 }
 
@@ -247,16 +253,20 @@ export async function toggleLike(postId) {
 
     if (existing) {
       // Unlike.
-      await supabase
+      const { error: delErr } = await supabase
         .from('post_likes')
         .delete()
         .eq('post_id', postId)
         .eq('user_id', user.id);
+      // (audit #7) surface write failures
+      if (delErr) throw new Error(delErr.message);
     } else {
       // Like.
-      await supabase
+      const { error: insErr } = await supabase
         .from('post_likes')
         .insert({ post_id: postId, user_id: user.id });
+      // (audit #7) surface write failures
+      if (insErr) throw new Error(insErr.message);
     }
 
     // Recompute the like count from the source of truth and persist it.
@@ -310,13 +320,17 @@ export async function reportPost(postId, reason) {
   try {
     const user = await getSessionUser();
     if (!user?.id) return;
-    await supabase.from('post_reports').insert({
+    const { error } = await supabase.from('post_reports').insert({
       post_id: postId,
       reporter_id: user.id,
       reason: reason || 'unspecified',
     });
+    // (audit #7) surface write failures
+    if (error) throw new Error(error.message);
   } catch (e) {
+    // (audit #7) surface write failures — re-throw so the screen's try/catch alerts.
     console.warn('socialService: reportPost failed', e);
+    throw e;
   }
 }
 
@@ -331,12 +345,16 @@ export async function blockUser(authorId) {
     const user = await getSessionUser();
     if (!user?.id) return;
     if (authorId === user.id) return; // can't block yourself
-    await supabase.from('blocked_users').insert({
+    const { error } = await supabase.from('blocked_users').insert({
       blocker_id: user.id,
       blocked_id: authorId,
     });
+    // (audit #7) surface write failures
+    if (error) throw new Error(error.message);
   } catch (e) {
+    // (audit #7) surface write failures — re-throw so the screen's try/catch alerts.
     console.warn('socialService: blockUser failed', e);
+    throw e;
   }
 }
 
@@ -347,9 +365,13 @@ export async function blockUser(authorId) {
 export async function getBlockedUsers() {
   if (!isSupabaseConfigured()) return [];
   try {
+    // (audit #5) defense-in-depth: filter by blocker_id explicitly, not RLS alone.
+    const user = await getSessionUser();
+    if (!user?.id) return [];
     const { data, error } = await supabase
       .from('blocked_users')
-      .select('blocked_id');
+      .select('blocked_id')
+      .eq('blocker_id', user.id);
     if (error) return [];
     return (data || []).map((r) => r.blocked_id);
   } catch (e) {
