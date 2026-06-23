@@ -97,14 +97,16 @@ export default {
     ],
     scheme: "glp1coach",
     extra: {
-      // SECURITY (audit #1): no hardcoded project credentials here. Anything in
-      // `extra` ships in the client bundle, so it must come ONLY from env. The
-      // Supabase URL + publishable (anon) key are safe to ship (public by design),
-      // but env-only keeps the app portable across projects and out of git.
-      // The OpenAI secret key NEVER lives here — it stays on the Supabase edge proxy.
-      // Set these in .env (local) and as EAS secrets (builds). See .env.example.
-      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || "",
-      supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "",
+      // Supabase URL + publishable (anon) key. These are SAFE to ship in the client
+      // by design — Row Level Security (see supabase/migrations) ensures each user
+      // can only read/write their own rows. They are committed as defaults so a fresh
+      // `git clone` runs against the same backend with zero setup; env vars still
+      // override them for other environments. NOTE: because the anon key is committed,
+      // keep this repository PRIVATE.
+      // The OpenAI SECRET key NEVER lives here — it stays on the Supabase edge proxy.
+      supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL || "https://jzfjpwoxglacrqxfhvjd.supabase.co",
+      supabaseAnonKey:
+        process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "sb_publishable_jL_RoPuZesNFM-Vwt3sB1g_UEHz38t4",
       revenuecatApiKey: process.env.REVENUECAT_API_KEY || "",
       eas: {
         projectId: "b328678b-4d82-4468-9028-6890cf5aad20",
