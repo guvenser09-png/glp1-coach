@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { supabase } from '../services/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useUnit } from '../context/UnitContext';
@@ -417,24 +418,46 @@ export default function SettingsScreen({ navigation }) {
   }
 
   function handleDeleteAccount() {
+    const isTr = language === 'tr';
     Alert.alert(
-      language === 'tr' ? 'Hesabı Sil' : 'Delete Account',
-      language === 'tr'
-        ? 'Hesabınızı silmek istediğinizden emin misiniz? Tüm verileriniz kalıcı olarak silinecektir. Bu işlem geri alınamaz.'
-        : 'Are you sure you want to delete your account? All your data will be permanently deleted. This cannot be undone.',
+      isTr ? 'Hesabı Sil' : 'Delete Account',
+      isTr
+        ? 'Hesabınızı silmek istediğinizden emin misiniz? Sunucularımızdaki tüm verileriniz (profil, kilo, öğün, ilaç ve sağlık kayıtlarınız dahil) kalıcı olarak silinecektir. Bu işlem geri alınamaz.'
+        : 'Are you sure you want to delete your account? All your data on our servers (including your profile, weight, meal, medication, and health records) will be permanently deleted. This cannot be undone.',
       [
-        { text: language === 'tr' ? 'İptal' : 'Cancel', style: 'cancel' },
+        { text: isTr ? 'İptal' : 'Cancel', style: 'cancel' },
         {
-          text: language === 'tr' ? 'Hesabı Sil' : 'Delete Account',
+          text: isTr ? 'Hesabı Sil' : 'Delete Account',
           style: 'destructive',
           onPress: async () => {
-            // App Store 5.1.1(v): in-app account deletion. This is a local-only
-            // build, so deletion = wipe all local data + sign out. AsyncStorage
-            // is imported at the top of the module (no inline require).
+            // App Store 5.1.1(v) + KVKK/GDPR: real server-side deletion. The
+            // delete-account Edge Function verifies the caller's JWT and wipes
+            // every row owned by the user across all tables, then deletes the
+            // auth user. We only clear local state + sign out AFTER the server
+            // confirms success — otherwise data would be orphaned silently.
+            try {
+              const { data, error } = await supabase.functions.invoke('delete-account');
+              if (error) throw error;
+              if (!data || data.ok !== true) {
+                throw new Error('delete-failed');
+              }
+            } catch (e) {
+              Alert.alert(
+                isTr ? 'Silinemedi' : 'Deletion Failed',
+                isTr
+                  ? 'Hesabınız silinemedi. Lütfen internet bağlantınızı kontrol edip tekrar deneyin. Sorun devam ederse support@glp1coach.app ile iletişime geçin.'
+                  : 'Your account could not be deleted. Please check your internet connection and try again. If the problem persists, contact support@glp1coach.app.'
+              );
+              // Do NOT sign out — keep the session so the user can retry and
+              // data is never left orphaned without the user realizing it.
+              return;
+            }
+
+            // Server-side deletion succeeded — now clear local cache + sign out.
             try {
               await AsyncStorage.clear();
             } catch {
-              // Even if the wipe fails, still sign the user out below.
+              // Even if the local wipe fails, still sign the user out below.
             }
             try {
               await signOut();
@@ -485,7 +508,7 @@ export default function SettingsScreen({ navigation }) {
 
   const isTr = language === 'tr';
 
-  const PRIVACY_TEXT = isTr ? `GİZLİLİK POLİTİKASI\n\nSon güncelleme: Mayıs 2026\n\n1. Toplanan Veriler\nUygulama; ad, e-posta, kilo, boy ve cinsiyet bilgilerinizi cihazınızda yerel olarak saklar. Öğün analizi veya wellness rehberi sohbeti için girdiğiniz metin ve fotoğraflar OpenAI'ye gönderilir.\n\n2. Verilerin Kullanımı\nVerileriniz yalnızca kişiselleştirilmiş protein hedefi ve beslenme önerileri oluşturmak için kullanılır. Üçüncü taraflara satılmaz veya paylaşılmaz.\n\n3. OpenAI\nÖğün analizi ve wellness sohbeti için girdiğiniz veriler OpenAI API'sine iletilir. OpenAI gizlilik politikası için: openai.com/privacy\n\n4. Veri Güvenliği\nVerileriniz şifreli bağlantılar (HTTPS/TLS) üzerinden iletilir. Yerel veriler cihazınızın güvenli depolama alanında tutulur.\n\n5. Veri Silme\nAyarlar > Hesabı Kalıcı Olarak Sil seçeneği ile tüm verilerinizi silebilirsiniz.\n\n6. İletişim\nSorularınız için: support@glp1coach.app` : `PRIVACY POLICY\n\nLast updated: May 2026\n\n1. Data We Collect\nThe app stores your name, email, weight, height, and gender locally on your device. Text and photos you enter for meal analysis or wellness guide chat are sent to OpenAI.\n\n2. How We Use Your Data\nYour data is used solely to generate personalized protein targets and nutrition suggestions. It is never sold or shared with third parties.\n\n3. OpenAI\nData you enter for meal analysis and wellness chat is sent to the OpenAI API. For OpenAI's privacy policy visit: openai.com/privacy\n\n4. Data Security\nAll data is transmitted over encrypted connections (HTTPS/TLS). Local data is stored in your device's secure storage.\n\n5. Data Deletion\nYou can delete all your data via Settings > Permanently Delete Account.\n\n6. Contact\nFor questions: support@glp1coach.app`;
+  const PRIVACY_TEXT = isTr ? `GİZLİLİK POLİTİKASI\n\nSon güncelleme: Mayıs 2026\n\n1. Toplanan Veriler\nUygulama; ad, e-posta, kilo, boy ve cinsiyet bilgilerinizi bulut altyapımızda (Supabase) güvenli şekilde saklar. Öğün analizi veya wellness rehberi sohbeti için girdiğiniz metin ve fotoğraflar OpenAI'ye gönderilir.\n\n2. Verilerin Kullanımı\nVerileriniz yalnızca kişiselleştirilmiş protein hedefi ve beslenme önerileri oluşturmak için kullanılır. Üçüncü taraflara satılmaz veya paylaşılmaz.\n\n3. OpenAI\nÖğün analizi ve wellness sohbeti için girdiğiniz veriler OpenAI API'sine iletilir. OpenAI gizlilik politikası için: openai.com/privacy\n\n4. Veri Güvenliği\nVerileriniz şifreli bağlantılar (HTTPS/TLS) üzerinden iletilir ve yalnızca size ait satırlara erişim izni veren güvenli bir veritabanında tutulur.\n\n5. Veri Silme\nAyarlar > Hesabı Kalıcı Olarak Sil seçeneği ile tüm verilerinizi sunucularımızdan kalıcı olarak silebilirsiniz.\n\n6. İletişim\nSorularınız için: support@glp1coach.app` : `PRIVACY POLICY\n\nLast updated: May 2026\n\n1. Data We Collect\nThe app stores your name, email, weight, height, and gender securely in our cloud backend (Supabase). Text and photos you enter for meal analysis or wellness guide chat are sent to OpenAI.\n\n2. How We Use Your Data\nYour data is used solely to generate personalized protein targets and nutrition suggestions. It is never sold or shared with third parties.\n\n3. OpenAI\nData you enter for meal analysis and wellness chat is sent to the OpenAI API. For OpenAI's privacy policy visit: openai.com/privacy\n\n4. Data Security\nAll data is transmitted over encrypted connections (HTTPS/TLS) and kept in a secure database where access is restricted to the rows you own.\n\n5. Data Deletion\nYou can permanently delete all your data from our servers via Settings > Permanently Delete Account.\n\n6. Contact\nFor questions: support@glp1coach.app`;
 
   const TERMS_TEXT = isTr ? `KULLANIM KOŞULLARI\n\nSon güncelleme: Mayıs 2026\n\n1. Tıbbi Sorumluluk Reddi\nGLP-1 Coach bir yaşam tarzı takip uygulamasıdır. Tıbbi teşhis, tedavi veya tavsiye sunmaz. Sağlık kararları için her zaman bir sağlık profesyoneliyle görüşün.\n\n2. Acil Durum\nBu uygulama acil tıbbi durumlarda kullanılamaz. Acil durumda 112'yi arayın.\n\n3. Kullanıcı Sorumlulukları\nUygulamayı yasalara uygun şekilde kullanmayı, doğru bilgi girmeyi ve sağlığınızla ilgili kararları bir uzmanla değerlendirmeyi kabul edersiniz.\n\n4. Fikri Mülkiyet\nUygulama içeriği, tasarımı ve kodu telif hakkı koruması altındadır.\n\n5. Sorumluluk Sınırlaması\nUygulama "olduğu gibi" sunulmaktadır. Geliştiriciler uygulama kullanımından kaynaklanan doğrudan veya dolaylı zararlardan sorumlu tutulamaz.\n\n6. Değişiklikler\nBu koşullar önceden bildirim yapılmaksızın güncellenebilir. Uygulamayı kullanmaya devam etmek güncel koşulları kabul etmek anlamına gelir.\n\n7. İletişim\nSorularınız için: support@glp1coach.app` : `TERMS OF USE\n\nLast updated: May 2026\n\n1. Medical Disclaimer\nGLP-1 Coach is a lifestyle tracking application. It does not provide medical diagnosis, treatment, or advice. This app does not provide medical advice, diagnosis, or treatment. Always consult your healthcare provider for health decisions.\n\n2. Emergency Situations\nThis app cannot be used in medical emergencies. In an emergency, call your local emergency number.\n\n3. User Responsibilities\nYou agree to use the app in compliance with applicable laws, to enter accurate information, and to evaluate health-related decisions with a qualified professional.\n\n4. Intellectual Property\nApp content, design, and code are protected by copyright.\n\n5. Limitation of Liability\nThe app is provided "as is." Developers cannot be held liable for direct or indirect damages arising from use of the app.\n\n6. Changes\nThese terms may be updated without prior notice. Continued use of the app constitutes acceptance of the updated terms.\n\n7. Contact\nFor questions: support@glp1coach.app`;
 

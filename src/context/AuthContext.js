@@ -5,8 +5,8 @@ const AuthContext = createContext({
   user: null,
   loading: true,
   signOut: async () => {},
-  signInWithApple: async () => {},
   signInWithEmail: async () => {},
+  resendConfirmation: async () => {},
 });
 
 // Build the app-facing user shape from a Supabase auth user.
@@ -118,11 +118,22 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Apple sign-in requires extra native + Supabase provider setup (nonce,
-  // identity token exchange). Until that's configured, fail gracefully instead
-  // of crashing — email is the primary path now.
-  const signInWithApple = async () => {
-    throw new Error('apple-unavailable');
+  // Resend the signup confirmation email for an address that registered but
+  // hasn't confirmed yet. Surfaces a coded error the UI can show to the user.
+  const resendConfirmation = async (email) => {
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail) {
+      throw new Error('missing-credentials');
+    }
+    if (!isSupabaseConfigured()) {
+      throw new Error('auth-unavailable');
+    }
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: cleanEmail,
+    });
+    if (error) throw friendlyAuthError(error);
+    return { ok: true };
   };
 
   // Email sign-up / sign-in via Supabase Auth.
@@ -187,7 +198,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signOut, signInWithApple, signInWithEmail }}>
+    <AuthContext.Provider value={{ user, loading, signOut, signInWithEmail, resendConfirmation }}>
       {children}
     </AuthContext.Provider>
   );

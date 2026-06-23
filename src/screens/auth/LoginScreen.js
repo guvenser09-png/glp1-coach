@@ -20,8 +20,8 @@ import { typography, fontFamily, spacing, radii, useTheme } from '../../theme';
 import { GradientHero } from '../../components/ui';
 
 const PRIVACY_TEXT = {
-  tr: `GİZLİLİK POLİTİKASI\n\nSon güncelleme: Mayıs 2026\n\n1. Toplanan Veriler\nUygulama; ad, e-posta, kilo, boy, cinsiyet bilgilerinizi ve günlük protein alımı, adım sayısı ve egzersiz kayıtlarınızı cihazınızda yerel olarak saklar. Öğün analizi veya wellness rehberi sohbeti için girdiğiniz metin ve fotoğraflar OpenAI'ye gönderilir.\n\n2. Verilerin Kullanımı\nVerileriniz yalnızca kişiselleştirilmiş protein hedefi ve beslenme önerileri oluşturmak için kullanılır. Üçüncü taraflara satılmaz veya paylaşılmaz.\n\n3. OpenAI\nÖğün analizi ve wellness sohbeti için girdiğiniz veriler OpenAI API'sine iletilir. OpenAI gizlilik politikası: openai.com/privacy\n\n4. Veri Güvenliği\nVerileriniz şifreli bağlantılar (HTTPS/TLS) üzerinden iletilir.\n\n5. Veri Silme\nAyarlar > Hesabı Kalıcı Olarak Sil seçeneği ile tüm verilerinizi silebilirsiniz.\n\n6. İletişim\nSorularınız için: support@glp1coach.app`,
-  en: `PRIVACY POLICY\n\nLast updated: May 2026\n\n1. Data We Collect\nThe app stores your name, email, weight, height, gender, daily protein intake, step counts, and exercise logs locally on your device. Text and photos you enter for meal analysis or wellness guide chat are sent to OpenAI.\n\n2. How We Use Your Data\nYour data is used solely to generate personalized protein targets and nutrition suggestions. It is never sold or shared with third parties.\n\n3. OpenAI\nData you enter for meal analysis and wellness chat is sent to the OpenAI API. For OpenAI's privacy policy visit: openai.com/privacy\n\n4. Data Security\nAll data is transmitted over encrypted connections (HTTPS/TLS).\n\n5. Data Deletion\nYou can delete all your data via Settings > Permanently Delete Account.\n\n6. Contact\nFor questions: support@glp1coach.app`,
+  tr: `GİZLİLİK POLİTİKASI\n\nSon güncelleme: Mayıs 2026\n\n1. Toplanan Veriler\nUygulama; ad, e-posta, kilo, boy, cinsiyet bilgilerinizi ve günlük protein alımı, adım sayısı ve egzersiz kayıtlarınızı bulut altyapımızda (Supabase) güvenli şekilde saklar. Öğün analizi veya wellness rehberi sohbeti için girdiğiniz metin ve fotoğraflar OpenAI'ye gönderilir.\n\n2. Verilerin Kullanımı\nVerileriniz yalnızca kişiselleştirilmiş protein hedefi ve beslenme önerileri oluşturmak için kullanılır. Üçüncü taraflara satılmaz veya paylaşılmaz.\n\n3. OpenAI\nÖğün analizi ve wellness sohbeti için girdiğiniz veriler OpenAI API'sine iletilir. OpenAI gizlilik politikası: openai.com/privacy\n\n4. Veri Güvenliği\nVerileriniz şifreli bağlantılar (HTTPS/TLS) üzerinden iletilir ve erişim kontrollü güvenli bir veritabanında tutulur.\n\n5. Veri Silme\nAyarlar > Hesabı Kalıcı Olarak Sil seçeneği ile tüm verilerinizi sunucularımızdan kalıcı olarak silebilirsiniz.\n\n6. İletişim\nSorularınız için: support@glp1coach.app`,
+  en: `PRIVACY POLICY\n\nLast updated: May 2026\n\n1. Data We Collect\nThe app stores your name, email, weight, height, gender, daily protein intake, step counts, and exercise logs securely in our cloud backend (Supabase). Text and photos you enter for meal analysis or wellness guide chat are sent to OpenAI.\n\n2. How We Use Your Data\nYour data is used solely to generate personalized protein targets and nutrition suggestions. It is never sold or shared with third parties.\n\n3. OpenAI\nData you enter for meal analysis and wellness chat is sent to the OpenAI API. For OpenAI's privacy policy visit: openai.com/privacy\n\n4. Data Security\nAll data is transmitted over encrypted connections (HTTPS/TLS) and kept in an access-controlled secure database.\n\n5. Data Deletion\nYou can permanently delete all your data from our servers via Settings > Permanently Delete Account.\n\n6. Contact\nFor questions: support@glp1coach.app`,
 };
 
 const TERMS_TEXT = {
@@ -30,46 +30,71 @@ const TERMS_TEXT = {
 };
 
 export default function LoginScreen() {
-  const { signInWithApple, signInWithEmail } = useAuth();
+  const { signInWithEmail, resendConfirmation } = useAuth();
   const { language } = useLanguage();
   const isTr = language === 'tr';
   const { colors, shadow } = useTheme();
   const styles = useMemo(() => makeStyles(colors, shadow), [colors, shadow]);
-  const [loading, setLoading] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [termsVisible, setTermsVisible] = useState(false);
 
-  // Email auth (cross-platform — primary path on Android)
+  // Email auth (email/password is the sole sign-in method)
   const [signupMode, setSignupMode] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [emailLoading, setEmailLoading] = useState(false);
 
-  async function handleAppleLogin() {
-    setLoading(true);
+  // Set once a signup needs e-mail confirmation, so we can show the
+  // "check your inbox" banner + a Resend button instead of a dead end.
+  const [confirmPending, setConfirmPending] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  // Minimum password length enforced client-side before hitting Supabase.
+  const MIN_PASSWORD_LENGTH = 8;
+
+  async function handleResendConfirmation() {
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      Alert.alert(
+        isTr ? 'E-posta Gerekli' : 'Email Required',
+        isTr
+          ? 'Doğrulama e-postasını yeniden göndermek için e-posta adresinizi girin.'
+          : 'Enter your email address to resend the confirmation email.'
+      );
+      return;
+    }
+    setResending(true);
     try {
-      await signInWithApple();
+      await resendConfirmation(cleanEmail);
+      Alert.alert(
+        isTr ? 'E-posta Gönderildi' : 'Email Sent',
+        isTr
+          ? 'Doğrulama e-postası tekrar gönderildi. Gelen kutunu kontrol et.'
+          : 'Confirmation email resent. Please check your inbox.'
+      );
     } catch (err) {
-      if (err?.code === 'ERR_REQUEST_CANCELED') {
-        // user cancelled — stay silent
-      } else if (err?.message === 'apple-unavailable') {
-        Alert.alert(
-          isTr ? 'Apple ile Giriş' : 'Apple Sign-In',
-          isTr
-            ? 'Apple ile giriş şu anda kullanılamıyor; şimdilik e-posta ile giriş yapın.'
-            : 'Apple sign-in is not available right now; use email for now.'
-        );
-      } else {
-        Alert.alert(
-          isTr ? 'Giriş Hatası' : 'Sign-In Error',
-          isTr
-            ? 'Apple ile giriş yapılamadı. Lütfen tekrar deneyin.'
-            : 'Could not sign in with Apple. Please try again.'
-        );
+      const code = err?.message;
+      let msg;
+      switch (code) {
+        case 'network-error':
+          msg = isTr
+            ? 'Bağlantı hatası. İnternetini kontrol edip tekrar dene.'
+            : 'Connection error. Check your internet and try again.';
+          break;
+        case 'auth-unavailable':
+          msg = isTr
+            ? 'Şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyin.'
+            : 'Unavailable right now. Please try again later.';
+          break;
+        default:
+          msg = isTr
+            ? 'Doğrulama e-postası gönderilemedi. Tekrar deneyin.'
+            : 'Could not resend the confirmation email. Please try again.';
       }
+      Alert.alert(isTr ? 'Hata' : 'Error', msg);
     } finally {
-      setLoading(false);
+      setResending(false);
     }
   }
 
@@ -84,12 +109,12 @@ export default function LoginScreen() {
       );
       return;
     }
-    if (password.length < 6) {
+    if (password.length < MIN_PASSWORD_LENGTH) {
       Alert.alert(
         isTr ? 'Zayıf Şifre' : 'Weak Password',
         isTr
-          ? 'Şifre en az 6 karakter olmalıdır.'
-          : 'Password must be at least 6 characters.'
+          ? `Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalıdır.`
+          : `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`
       );
       return;
     }
@@ -99,13 +124,15 @@ export default function LoginScreen() {
     } catch (err) {
       const code = err?.message;
 
-      // Account created but e-mail not yet confirmed — friendly, not an error.
+      // Account created but e-mail not yet confirmed — show an inline banner
+      // with a Resend button rather than a one-shot alert dead-end.
       if (code === 'confirm-email') {
+        setConfirmPending(true);
         Alert.alert(
-          isTr ? 'E-postanı doğrula' : 'Check your email',
+          isTr ? 'E-postanı doğrula' : 'Check your inbox',
           isTr
-            ? 'Hesabını onaylamak için e-postandaki doğrulama bağlantısına tıkla, sonra giriş yap.'
-            : 'Check your email to confirm your account, then sign in.'
+            ? 'Hesabını onaylamak için e-postandaki doğrulama bağlantısına tıkla, sonra giriş yap. E-posta gelmediyse "Yeniden Gönder"e dokun.'
+            : 'Check your inbox to confirm your email, then sign in. If it did not arrive, tap "Resend".'
         );
         return;
       }
@@ -129,8 +156,8 @@ export default function LoginScreen() {
           break;
         case 'weak-password':
           msg = isTr
-            ? 'Şifre en az 6 karakter olmalıdır.'
-            : 'Password must be at least 6 characters.';
+            ? `Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalıdır.`
+            : `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
           break;
         case 'network-error':
           msg = isTr
@@ -245,39 +272,38 @@ export default function LoginScreen() {
           ))}
         </View>
 
-        {/* Apple Sign-In (iOS only) */}
-        {Platform.OS === 'ios' && (
-          <>
+        {/* Email confirmation pending — clear next step + resend */}
+        {confirmPending && (
+          <View style={styles.confirmBanner}>
+            <Text style={styles.confirmTitle}>
+              {isTr ? '📧 E-postanı doğrula' : '📧 Confirm your email'}
+            </Text>
+            <Text style={styles.confirmText}>
+              {isTr
+                ? 'Hesabını onaylamak için gelen kutundaki doğrulama bağlantısına tıkla, sonra giriş yap.'
+                : 'Check your inbox to confirm your email, then sign in.'}
+            </Text>
             <TouchableOpacity
-              style={[styles.appleBtn, loading && styles.btnDisabled]}
-              onPress={handleAppleLogin}
-              disabled={loading}
-              activeOpacity={0.88}
+              style={[styles.resendBtn, resending && styles.btnDisabled]}
+              onPress={handleResendConfirmation}
+              disabled={resending}
+              activeOpacity={0.85}
               accessibilityRole="button"
-              accessibilityState={{ disabled: loading, busy: loading }}
-              accessibilityLabel={isTr ? 'Apple ile Devam Et' : 'Continue with Apple'}
+              accessibilityState={{ disabled: resending, busy: resending }}
+              accessibilityLabel={isTr ? 'Doğrulama e-postasını yeniden gönder' : 'Resend confirmation email'}
             >
-              {loading ? (
-                <ActivityIndicator color={colors.white} />
+              {resending ? (
+                <ActivityIndicator color={colors.primary} />
               ) : (
-                <>
-                  <Text style={styles.appleBtnIcon}></Text>
-                  <Text style={styles.appleBtnText}>
-                    {isTr ? 'Apple ile Devam Et' : 'Continue with Apple'}
-                  </Text>
-                </>
+                <Text style={styles.resendBtnText}>
+                  {isTr ? 'Yeniden Gönder' : 'Resend'}
+                </Text>
               )}
             </TouchableOpacity>
-
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>{isTr ? 'veya' : 'or'}</Text>
-              <View style={styles.dividerLine} />
-            </View>
-          </>
+          </View>
         )}
 
-        {/* Email Sign-In / Sign-Up (cross-platform) */}
+        {/* Email Sign-In / Sign-Up (sole authentication method) */}
         <View style={styles.emailForm}>
           {signupMode && (
             <TextInput
@@ -406,16 +432,38 @@ const makeStyles = (colors, shadow) =>
     justifyContent: 'center',
   },
 
-  dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  confirmBanner: {
+    backgroundColor: colors.infoBg,
+    borderRadius: radii.md,
+    padding: spacing.gutter,
     marginBottom: spacing.stackMd,
+    borderWidth: 1,
+    borderColor: colors.primary + '33',
     gap: spacing.stackSm,
   },
-  dividerLine: { flex: 1, height: 1, backgroundColor: colors.outlineVariant },
-  dividerText: {
+  confirmTitle: {
+    ...typography.labelMd,
+    fontFamily: fontFamily.bodyBold,
+    color: colors.primaryDark,
+  },
+  confirmText: {
     ...typography.labelSm,
-    color: colors.outline,
+    color: colors.onSurfaceVariant,
+    lineHeight: 18,
+  },
+  resendBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: spacing.gutter,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    marginTop: spacing.stackSm,
+  },
+  resendBtnText: {
+    ...typography.labelMd,
+    color: colors.primary,
+    fontFamily: fontFamily.bodySemiBold,
   },
 
   emailForm: { gap: spacing.stackSm, marginBottom: spacing.stackMd },
@@ -497,28 +545,7 @@ const makeStyles = (colors, shadow) =>
     flex: 1,
   },
 
-  appleBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.black, borderRadius: radii.md, paddingVertical: 16, gap: spacing.stackSm,
-    marginBottom: spacing.stackMd,
-    ...Platform.select({
-      ios: {
-        shadowColor: colors.black,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.18,
-        shadowRadius: 12,
-      },
-      android: { elevation: 4 },
-    }),
-  },
   btnDisabled: { opacity: 0.6 },
-  appleBtnIcon: { fontSize: 20, color: colors.white },
-  appleBtnText: {
-    color: colors.white,
-    fontFamily: fontFamily.bodyBold,
-    fontSize: 17,
-    fontWeight: '700',
-  },
 
   healthDisclaimer: {
     backgroundColor: colors.warningBg, borderRadius: radii.md, padding: spacing.gutter,

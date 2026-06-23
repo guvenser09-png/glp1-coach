@@ -22,8 +22,18 @@ export interface CallAIChatArgs {
   maxTokens?: number;
   temperature?: number;
   responseFormat?: { type: string };
+  /**
+   * Task-based model selection (report #6, cost). Optional; when omitted the
+   * cheaper `gpt-4o-mini` is used (text estimate / coach / notifications / diet).
+   * Only the photo/vision path passes `gpt-4o`. The ai-proxy Edge Function
+   * enforces a whitelist and rejects anything else with HTTP 400.
+   */
   model?: string;
 }
+
+// Default model for all non-vision tasks. Kept here so call sites can simply
+// omit `model`; the photo/vision path opts into 'gpt-4o' explicitly.
+const DEFAULT_MODEL = 'gpt-4o-mini';
 
 /** Single entry point for all AI chat/vision completions. Returns assistant text. */
 export async function callAIChat({
@@ -40,12 +50,15 @@ export async function callAIChat({
     throw aiUnavailable('callAIChat requires a non-empty messages array.');
   }
 
+  // Default to the cheap model when the caller omits `model` (report #6, cost).
+  const resolvedModel = model || DEFAULT_MODEL;
+
   let lastError: unknown;
   // One initial try + one retry on transient failure (report C2).
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const { data, error } = await supabase.functions.invoke('ai-proxy', {
-        body: { messages, maxTokens, temperature, responseFormat, model },
+        body: { messages, maxTokens, temperature, responseFormat, model: resolvedModel },
       });
       if (error) throw new Error(error.message || 'invoke error');
       if (data?.error) throw new Error(data.message || data.error);

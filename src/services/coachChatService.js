@@ -242,8 +242,9 @@ Your role:
 
   try {
     // Routed through the backend proxy — no client-side OpenAI key (report A1).
+    // Coach chat is text-only → use the cheaper gpt-4o-mini (report #6, cost).
     const reply = await callAIChat({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       maxTokens: 150,
       temperature: 0.8,
       messages: [

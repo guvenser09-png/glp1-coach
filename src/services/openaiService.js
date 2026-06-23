@@ -398,8 +398,10 @@ Rules:
 
   try {
     // Routed through the backend proxy — no client-side OpenAI key (report A1).
+    // Text-only estimate uses the cheaper default model (gpt-4o-mini); the
+    // expensive gpt-4o is reserved for vision/photo analysis (report #6, cost).
     const raw = await callAIChat({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       maxTokens: 500,
       temperature: 0,
       responseFormat: { type: 'json_object' },
