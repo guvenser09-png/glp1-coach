@@ -71,7 +71,7 @@ children.
 We may update this policy; the "Last updated" date will change accordingly.
 
 ## 9. Support / contact
-Support email: _<add your support email here>_
+Support email: support@glp1coach.app
 
 ---
 
@@ -99,4 +99,4 @@ sakladığımızı ve haklarınızı açıklar.
   hesabınızı ve tüm sağlık verilerinizi kalıcı silme** (Ayarlar → Hesabı Sil) — sunucudaki
   tüm satırlarınız + kimlik kaydınız silinir, geri alınamaz.
 - **Çocuklar:** uygulama 18 yaş altı için değildir.
-- **Destek:** _<destek e-postanızı buraya ekleyin>_
+- **Destek:** support@glp1coach.app

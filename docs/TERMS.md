@@ -34,7 +34,7 @@ To the extent permitted by law, we are not liable for any health outcome, loss, 
 damage arising from use of the app. The app is provided "as is".
 
 ## 7. Contact
-Support email: _<add your support email here>_
+Support email: support@glp1coach.app
 
 ---
 
@@ -52,4 +52,4 @@ Support email: _<add your support email here>_
 - **Yapay zekâ:** AI içeriği hatalı/eksik olabilir; yalnızca bilgilendirme amaçlıdır.
 - **Sorumluluk sınırı:** yasanın izin verdiği ölçüde, uygulamanın kullanımından doğan
   sağlık sonucu/zarardan sorumlu değiliz. Uygulama "olduğu gibi" sunulur.
-- **İletişim:** _<destek e-postanızı buraya ekleyin>_
+- **İletişim:** support@glp1coach.app
