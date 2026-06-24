@@ -257,6 +257,24 @@ export default function MealAnalysisScreen({ navigation }) {
     scheduleDailyMotivation(language);
   }, [user]);
 
+  // Re-pull weight logs whenever this screen regains focus, so the Weekly Report
+  // reflects weigh-ins added elsewhere (Weight/Dashboard). Previously weight was
+  // loaded only once on mount, so the report never updated after a new weigh-in.
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      getWeightLogs(user.uid)
+        .then((logs) => {
+          if (Array.isArray(logs)) {
+            setWeightHistory(
+              logs.slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+            );
+          }
+        })
+        .catch(() => {});
+    }, [user])
+  );
+
   // ── Apple Watch / HealthKit ────────────────────────────────────────────────
   const refreshHealthData = useCallback(async () => {
     if (!healthAvailable || !healthAuthorized) return;
@@ -1516,9 +1534,13 @@ export default function MealAnalysisScreen({ navigation }) {
           <Card elevation="sm" style={styles.insightCardBlock} contentStyle={styles.emptyCardContent}>
             <Text style={styles.emptyEmoji}>📊</Text>
             <Text style={styles.emptyText}>
-              {isTr
-                ? 'Haftalık rapor için en az 2 kilo girişi gerekiyor.'
-                : 'Log at least 2 weights to see your weekly report.'}
+              {currentWeight != null
+                ? isTr
+                  ? `Şu anki kilon: ${formatWeight(currentWeight)}.\nHaftalık değişimi görmek için 2 farklı günde kilo gir. (Aynı gün birden çok giriş tek kayıt sayılır.)`
+                  : `Current weight: ${formatWeight(currentWeight)}.\nWeigh in on 2 different days to see your weekly change. (Multiple entries on the same day count as one.)`
+                : isTr
+                  ? 'Haftalık rapor için 2 farklı günde kilo girmen gerekiyor.'
+                  : 'Weigh in on 2 different days to see your weekly report.'}
             </Text>
           </Card>
         )}
