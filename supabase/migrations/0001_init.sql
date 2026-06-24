@@ -18,12 +18,10 @@
 -- ---------------------------------------------------------------------------
 -- profiles
 -- ---------------------------------------------------------------------------
--- handle_new_user() inserts a row with id = auth.users.id, so `id` is the PK and
--- also the owner key. The app also reads/writes via `user_id`, so we keep both in
--- sync (user_id defaults to id) and treat user_id as the RLS owner column.
+-- Owner key is `user_id` (= auth.users.id), which is the PK and the RLS owner
+-- column. handle_new_user() provisions one row per new auth user.
 create table if not exists public.profiles (
-  id                     uuid primary key references auth.users(id) on delete cascade,
-  user_id                uuid not null references auth.users(id) on delete cascade,
+  user_id                uuid primary key references auth.users(id) on delete cascade,
   name                   text,
   email                  text,
   gender                 text,
@@ -408,9 +406,13 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, user_id, email)
-  values (new.id, new.id, new.email)
-  on conflict (id) do nothing;
+  insert into public.profiles (user_id, email)
+  values (new.id, new.email)
+  on conflict (user_id) do nothing;
+  return new;
+exception when others then
+  -- Never block auth signup if profile provisioning fails; the app upserts the
+  -- profile on first write anyway.
   return new;
 end;
 $$;
