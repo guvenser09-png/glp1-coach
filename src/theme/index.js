@@ -38,34 +38,34 @@ export const lightColors = {
   primaryDark: '#3730A3',
   accent: '#6366F1',
 
-  // Hero gradient (linear 135deg)
+  // Hero gradient (linear 135deg) — vivid indigo→violet (Stitch "Maya")
   gradient: {
     start: '#4F46E5',
-    end: '#6366F1',
+    end: '#7B6EF6',
     angle: 135,
   },
 
-  // Surfaces
-  background: '#F7F9FB', // off-white app background
+  // Surfaces (Stitch: soft lavender-white app bg, pure white cards)
+  background: '#FAF8FF', // lavender-tinted app background
   surface: '#FFFFFF', // pure white cards
-  surfaceVariant: '#F7F9FB',
+  surfaceVariant: '#F2F3FF', // soft indigo tint
 
-  // Text
-  onSurface: '#191C1E',
-  onSurfaceVariant: '#464555',
+  // Text (Stitch ink + slate)
+  onSurface: '#131B2E',
+  onSurfaceVariant: '#475569',
   outline: '#777587',
-  outlineVariant: '#E5E7EB',
+  outlineVariant: '#E2E7FF', // lavender hairline
   onPrimary: '#FFFFFF',
 
   // Semantic
-  success: '#10B981',
-  successBg: '#ECFDF5',
+  success: '#16A34A',
+  successBg: '#DCFCE7',
   warning: '#F59E0B',
   warningBg: '#FFFBEB',
   danger: '#EF4444',
-  dangerBg: '#FEF2F2',
+  dangerBg: '#FFE4E6', // soft coral
   info: '#4F46E5',
-  infoBg: '#EEF2FF',
+  infoBg: '#EEF0FF',
 
   // Misc
   white: '#FFFFFF',
@@ -90,17 +90,17 @@ export const darkColors = {
     angle: 135,
   },
 
-  // Surfaces
-  background: '#0B0F14', // near-black app background
-  surface: '#161B22', // elevated cards
-  surfaceVariant: '#1F2630',
+  // Surfaces (Stitch dark: deep indigo-navy bg, slate elevated cards)
+  background: '#0B1020', // near-black indigo app background
+  surface: '#151B2E', // elevated cards
+  surfaceVariant: '#1E293B', // slate
 
-  // Text
-  onSurface: '#E6E8EB', // off-white primary text
-  onSurfaceVariant: '#A8AEB8',
+  // Text (Stitch slate scale)
+  onSurface: '#F1F5F9', // off-white primary text
+  onSurfaceVariant: '#94A3B8',
   outline: '#8A90A0',
-  outlineVariant: '#2A323D',
-  onPrimary: '#0B0F14', // dark text on bright primary
+  outlineVariant: '#334155',
+  onPrimary: '#0B1020', // dark text on bright primary
 
   // Semantic — desaturated fg for legibility, deep tinted bg
   success: '#34D399',
