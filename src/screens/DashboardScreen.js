@@ -23,6 +23,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useUnit } from '../context/UnitContext';
 import CoachMessage from '../components/CoachMessage';
+import MayaAvatar from '../components/MayaAvatar';
 import { useGamification } from '../context/GamificationContext';
 import FeatureTour from '../components/FeatureTour';
 import { sendCoachMessage } from '../services/coachChatService';
@@ -654,8 +655,8 @@ export default function DashboardScreen({ navigation }) {
     setChatMessages([{
       role: 'assistant',
       content: isTr
-        ? `Merhaba! Ben GLP-1 Coach rehberinim 💪 Protein takibi ve fitness hedeflerin için sana nasıl yardımcı olabilirim?\n\nℹ️ Bu bir yaşam tarzı rehberidir, tıbbi tavsiye değildir. Yanıtlar tahminidir; sağlık kararları için doktoruna danış. Mesajların analiz için güvenli bir sunucuya gönderilir.`
-        : `Hey! I'm your GLP-1 Coach Wellness Guide 💪 How can I help with your protein tracking and fitness goals today?\n\nℹ️ This is lifestyle guidance, not medical advice. Replies are estimates; consult your doctor for health decisions. Your messages are sent to a secure server for analysis.`,
+        ? `Merhaba! Ben Maya, GLP-1 Coach wellness rehberin 💪 Protein takibi ve fitness hedeflerin için sana nasıl yardımcı olabilirim?\n\nℹ️ Bu bir yaşam tarzı rehberidir, tıbbi tavsiye değildir. Yanıtlar tahminidir; sağlık kararları için doktoruna danış. Mesajların analiz için güvenli bir sunucuya gönderilir.`
+        : `Hey! I'm Maya, your GLP-1 Coach wellness guide 💪 How can I help with your protein tracking and fitness goals today?\n\nℹ️ This is lifestyle guidance, not medical advice. Replies are estimates; consult your doctor for health decisions. Your messages are sent to a secure server for analysis.`,
     }]);
     setChatVisible(true);
   }
@@ -863,10 +864,10 @@ export default function DashboardScreen({ navigation }) {
               onPress={openCoachChat}
               activeOpacity={0.85}
               accessibilityRole="button"
-              accessibilityLabel={isTr ? 'AI Koç ile sohbet et' : 'Chat with AI Coach'}
+              accessibilityLabel={isTr ? 'Maya ile sohbet et' : 'Chat with Maya'}
             >
-              <Text style={styles.heroActionEmoji} accessibilityElementsHidden importantForAccessibility="no">🤖</Text>
-              <Text style={styles.heroActionText}>{isTr ? 'AI Koç' : 'AI Coach'}</Text>
+              <MayaAvatar size={26} style={{ marginBottom: 4 }} />
+              <Text style={styles.heroActionText}>Maya</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.heroActionBtn, styles.heroActionBtnSolid]}
@@ -1059,9 +1060,9 @@ export default function DashboardScreen({ navigation }) {
             <View style={styles.chatHandle} />
             <View style={styles.chatHeader}>
               <View style={styles.chatHeaderLeft}>
-                <View style={styles.chatAvatar}><Text style={styles.chatAvatarEmoji}>🤖</Text></View>
+                <View style={styles.chatAvatar}><MayaAvatar size={34} /></View>
                 <View>
-                  <Text style={styles.chatName}>{isTr ? 'GLP-1 Coach Rehberin' : 'Your Wellness Guide'}</Text>
+                  <Text style={styles.chatName}>Maya</Text>
                   <Text style={styles.chatStatus}>
                     {isTr
                       ? `Bugün ${analyzedTodayProtein}g protein`
@@ -1086,7 +1087,7 @@ export default function DashboardScreen({ navigation }) {
             >
               {chatMessages.map((msg, i) => (
                 <View key={i} style={[styles.bubble, msg.role === 'user' ? styles.bubbleUser : styles.bubbleCoach]}>
-                  {msg.role === 'assistant' && <Text style={styles.bubbleEmoji}>🤖</Text>}
+                  {msg.role === 'assistant' && <MayaAvatar size={22} style={styles.bubbleAvatar} />}
                   <View style={[styles.bubbleText, msg.role === 'user' ? styles.bubbleTextUser : styles.bubbleTextCoach]}>
                     <Text style={[styles.bubbleMsg, msg.role === 'user' ? styles.bubbleMsgUser : styles.bubbleMsgCoach]}>
                       {msg.content}
@@ -1096,7 +1097,7 @@ export default function DashboardScreen({ navigation }) {
               ))}
               {chatLoading && (
                 <View style={[styles.bubble, styles.bubbleCoach]}>
-                  <Text style={styles.bubbleEmoji}>🤖</Text>
+                  <MayaAvatar size={22} style={styles.bubbleAvatar} />
                   <View style={styles.bubbleTextCoach}>
                     <ActivityIndicator size="small" color={colors.primary} />
                   </View>
@@ -1129,7 +1130,7 @@ export default function DashboardScreen({ navigation }) {
             <View style={styles.chatInputRow}>
               <TextInput
                 style={styles.chatInput}
-                placeholder={isTr ? 'Koçuna bir şey sor...' : 'Ask your coach anything...'}
+                placeholder={isTr ? 'Maya’ya bir şey sor...' : 'Ask Maya anything...'}
                 placeholderTextColor={colors.outline}
                 accessibilityLabel={isTr ? 'Mesaj kutusu' : 'Message input'}
                 value={chatInput}
@@ -1475,6 +1476,7 @@ const makeStyles = (colors, semantic, shadow) => StyleSheet.create({
   bubbleUser: { justifyContent: 'flex-end' },
   bubbleCoach: { justifyContent: 'flex-start' },
   bubbleEmoji: { fontSize: 18, marginRight: 6, marginBottom: 4 },
+  bubbleAvatar: { marginRight: 6, marginBottom: 4, alignSelf: 'flex-end' },
   bubbleText: { maxWidth: '78%', borderRadius: 16, padding: 12 },
   bubbleTextUser: { backgroundColor: colors.primary, borderBottomRightRadius: 4 },
   bubbleTextCoach: { backgroundColor: colors.surface, borderBottomLeftRadius: 4, ...shadow('sm') },

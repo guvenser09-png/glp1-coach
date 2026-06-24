@@ -219,33 +219,29 @@ export async function getTodayActiveEnergy() {
       'getStatisticsForQuantity'
     );
     if (sumFn) {
-      // v14 (Nitro): (id, ['cumulativeSum'], { unit, filter:{ startDate, endDate } }).
-      // Older libs: (id, ['cumulativeSum'], fromISO, toISO).
-      const attempts = [
-        () =>
-          sumFn(id, ['cumulativeSum'], {
-            unit: UNIT_KCAL,
-            filter: { startDate, endDate },
-          }),
-        () => sumFn(id, ['cumulativeSum'], fromISO, toISO),
-      ];
-      for (const run of attempts) {
-        try {
-          const stats = await run();
-          const sum =
-            stats?.sumQuantity?.quantity ??
-            stats?.sumQuantity ??
-            stats?.sum ??
-            null;
-          const n = Number(sum);
-          if (Number.isFinite(n)) return Math.round(n);
-        } catch {
-          // try next shape / fall through to sample summation
-        }
+      // IMPORTANT: only the explicitly date-filtered shape. We deliberately do
+      // NOT fall back to a positional/unfiltered cumulativeSum call, because some
+      // lib versions then return the ALL-TIME total (an absurd daily number).
+      try {
+        const stats = await sumFn(id, ['cumulativeSum'], {
+          unit: UNIT_KCAL,
+          filter: { startDate, endDate },
+        });
+        const sum =
+          stats?.sumQuantity?.quantity ??
+          stats?.sumQuantity ??
+          stats?.sum ??
+          null;
+        const n = Number(sum);
+        if (Number.isFinite(n)) return Math.round(n);
+      } catch {
+        // fall through to sample summation
       }
     }
 
-    // Fallback: fetch raw samples and sum them.
+    // Fallback: fetch raw samples and sum them — but defensively keep only
+    // samples that actually fall within today, in case the lib ignores the date
+    // filter and returns full history (which would show an all-time total).
     const queryFn = pick(
       hk,
       'queryQuantitySamples',
@@ -255,7 +251,6 @@ export async function getTodayActiveEnergy() {
     if (queryFn) {
       let samples;
       try {
-        // v14: options object with unit + date filter.
         samples = await queryFn(id, {
           unit: UNIT_KCAL,
           filter: { startDate, endDate },
@@ -269,7 +264,14 @@ export async function getTodayActiveEnergy() {
       }
       const arr = Array.isArray(samples) ? samples : samples?.samples || [];
       if (!arr.length) return null;
-      const total = arr.reduce((s, smp) => s + (sampleValue(smp) || 0), 0);
+      const startMs = startDate.getTime();
+      const endMs = endDate.getTime();
+      const total = arr.reduce((s, smp) => {
+        const ts = new Date(smp?.endDate || smp?.startDate || smp?.date || 0).getTime();
+        // Drop samples outside today (only when the sample carries a usable date).
+        if (ts && (ts < startMs || ts > endMs)) return s;
+        return s + (sampleValue(smp) || 0);
+      }, 0);
       return Number.isFinite(total) ? Math.round(total) : null;
     }
     return null;

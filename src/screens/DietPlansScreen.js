@@ -1370,8 +1370,27 @@ export default function DietPlansScreen({ navigation }) {
       });
       if (!raw) throw new Error('No response');
       const parsed = JSON.parse(raw);
-      const meals = parsed.meals || parsed;
-      if (!Array.isArray(meals) || meals.length === 0) throw new Error('Invalid format');
+      const rawMeals = Array.isArray(parsed?.meals)
+        ? parsed.meals
+        : Array.isArray(parsed)
+          ? parsed
+          : [];
+      // Keep ONLY well-formed meal objects and coerce every field. A malformed AI
+      // response (a null/string element, missing arrays, string numbers) used to
+      // crash the render at `aiMeals.find(m => m.type)` — "Cannot read property
+      // 'type' of null". Sanitizing here makes the screen crash-proof.
+      const meals = rawMeals
+        .filter((m) => m && typeof m === 'object')
+        .map((m) => ({
+          type: String(m.type || '').toLowerCase(),
+          name: String(m.name || ''),
+          protein: Number(m.protein) || 0,
+          calories: Number(m.calories) || 0,
+          prepTime: m.prepTime ? String(m.prepTime) : '—',
+          ingredients: Array.isArray(m.ingredients) ? m.ingredients : [],
+          steps: Array.isArray(m.steps) ? m.steps : [],
+        }));
+      if (meals.length === 0) throw new Error('Invalid format');
       setAiMeals(meals);
     } catch (e) {
       // Graceful fallback: on any AI failure (proxy unavailable / network /
@@ -1496,7 +1515,7 @@ export default function DietPlansScreen({ navigation }) {
   const mealList = MEAL_ORDER.map((type) => {
     if (aiMeals) {
       const aiMeal =
-        aiMeals.find((m) => m.type === type) || aiMeals[MEAL_ORDER.indexOf(type)];
+        aiMeals.find((m) => m && m.type === type) || aiMeals[MEAL_ORDER.indexOf(type)];
       if (aiMeal) return { key: type, type, meal: aiMeal, isAI: true };
     }
     return { key: type, type, meal: dayMeals[type], isAI: false };

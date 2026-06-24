@@ -34,6 +34,7 @@ import MedicalDisclaimer from '../components/MedicalDisclaimer';
 import { getMedicationProfile } from '../services/medicationService';
 import { sendCoachMessage } from '../services/coachChatService';
 import AIConsentModal from '../components/AIConsentModal';
+import MayaAvatar from '../components/MayaAvatar';
 import { scheduleDailyMotivation } from '../services/notificationService';
 import * as healthkitService from '../services/healthkitService';
 import { useGamification } from '../context/GamificationContext';
@@ -336,8 +337,8 @@ export default function MealAnalysisScreen({ navigation }) {
     setChatMessages([{
       role: 'assistant',
       content: isTr
-        ? `Merhaba! Ben GLP-1 Coach wellness rehberinim 💪 Bugünkü öğünlerini görüyorum. Sana nasıl yardımcı olabilirim?`
-        : `Hey! I'm your GLP-1 Coach Wellness Guide 💪 I can see your meals today. How can I help you?`,
+        ? `Merhaba! Ben Maya, GLP-1 Coach wellness rehberin 💪 Bugünkü öğünlerini görüyorum. Sana nasıl yardımcı olabilirim?`
+        : `Hey! I'm Maya, your GLP-1 Coach wellness guide 💪 I can see your meals today. How can I help you?`,
     }]);
     setChatVisible(true);
   }
@@ -875,8 +876,8 @@ export default function MealAnalysisScreen({ navigation }) {
             accessibilityRole="button"
             accessibilityLabel={isTr ? 'Koç ile sohbet et' : 'Chat with coach'}
           >
-            <Text style={styles.coachBtnEmoji}>🤖</Text>
-            <Text style={styles.coachBtnText}>{isTr ? 'Koç' : 'Coach'}</Text>
+            <MayaAvatar size={22} style={{ marginRight: 6 }} />
+            <Text style={styles.coachBtnText}>Maya</Text>
           </TouchableOpacity>
         </View>
 
@@ -1552,9 +1553,9 @@ export default function MealAnalysisScreen({ navigation }) {
             {/* Chat Header */}
             <View style={styles.chatHeader}>
               <View style={styles.chatHeaderLeft}>
-                <View style={styles.chatAvatar}><Text style={styles.chatAvatarEmoji}>🤖</Text></View>
+                <View style={styles.chatAvatar}><MayaAvatar size={34} /></View>
                 <View>
-                  <Text style={styles.chatName}>{isTr ? 'GLP-1 Coach Rehberin' : 'Your Wellness Guide'}</Text>
+                  <Text style={styles.chatName}>Maya</Text>
                   <Text style={styles.chatStatus}>
                     {isTr
                       ? `Bugün ${todayMeals.reduce((s,m)=>s+(m.protein||0),0)}g protein`
@@ -1581,7 +1582,7 @@ export default function MealAnalysisScreen({ navigation }) {
             >
               {chatMessages.map((msg, i) => (
                 <View key={i} style={[styles.bubble, msg.role === 'user' ? styles.bubbleUser : styles.bubbleCoach]}>
-                  {msg.role === 'assistant' && <Text style={styles.bubbleEmoji}>🤖</Text>}
+                  {msg.role === 'assistant' && <MayaAvatar size={22} style={{ marginRight: 6, marginBottom: 4, alignSelf: 'flex-end' }} />}
                   <View style={[styles.bubbleText, msg.role === 'user' ? styles.bubbleTextUser : styles.bubbleTextCoach]}>
                     <Text style={[styles.bubbleMsg, msg.role === 'user' ? styles.bubbleMsgUser : styles.bubbleMsgCoach]}>
                       {msg.content}
@@ -1591,7 +1592,7 @@ export default function MealAnalysisScreen({ navigation }) {
               ))}
               {chatLoading && (
                 <View style={[styles.bubble, styles.bubbleCoach]}>
-                  <Text style={styles.bubbleEmoji}>🤖</Text>
+                  <MayaAvatar size={22} style={{ marginRight: 6, marginBottom: 4, alignSelf: 'flex-end' }} />
                   <View style={styles.bubbleTextCoach}>
                     <ActivityIndicator size="small" color={colors.primary} />
                   </View>
@@ -1630,7 +1631,7 @@ export default function MealAnalysisScreen({ navigation }) {
             <View style={styles.chatInputRow}>
               <TextInput
                 style={styles.chatInput}
-                placeholder={isTr ? 'Koçuna bir şey sor...' : 'Ask your coach anything...'}
+                placeholder={isTr ? 'Maya’ya bir şey sor...' : 'Ask Maya anything...'}
                 placeholderTextColor={colors.outline}
                 value={chatInput}
                 onChangeText={setChatInput}
