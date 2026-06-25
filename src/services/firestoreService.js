@@ -139,6 +139,7 @@ function mapMealRow(row) {
     calories: row.calories,
     foodType: row.food_type,
     portionSize: row.portion_size,
+    mealType: row.meal_type, // breakfast | lunch | dinner | snack (optional)
     imageUri: row.image_uri,
     date: row.date,
   };
@@ -174,6 +175,7 @@ export async function saveMealAnalysis(userId, analysisData) {
     calories: a.calories,
     food_type: a.foodType,
     portion_size: a.portionSize,
+    meal_type: a.mealType,
     image_uri: a.imageUri,
     date: today(),
   });
@@ -225,6 +227,7 @@ export async function addMeal(userId, meal) {
       calories: m.calories,
       food_type: m.foodType,
       portion_size: m.portionSize,
+      meal_type: m.mealType,
       image_uri: m.imageUri,
       date: today(),
     })
@@ -262,6 +265,7 @@ export async function updateMeal(userId, id, fields) {
   if (f.calories !== undefined) patch.calories = f.calories;
   if (f.foodType !== undefined) patch.food_type = f.foodType;
   if (f.portionSize !== undefined) patch.portion_size = f.portionSize;
+  if (f.mealType !== undefined) patch.meal_type = f.mealType;
   if (f.imageUri !== undefined) patch.image_uri = f.imageUri;
   if (Object.keys(patch).length === 0) return;
   // (audit #5) defense-in-depth: scope the update to the owner explicitly.

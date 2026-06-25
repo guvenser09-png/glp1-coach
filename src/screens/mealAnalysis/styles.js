@@ -382,6 +382,42 @@ export const makeStyles = (colors, semantic, shadow) => StyleSheet.create({
   analyzeManualBtn: { backgroundColor: colors.primary, borderRadius: radii.md, paddingVertical: 14, alignItems: 'center', marginTop: 16, alignSelf: 'stretch' },
   analyzeManualBtnText: { color: colors.white, fontFamily: fontFamily.headingBold, fontWeight: '700', fontSize: 15 },
 
+  // ── Optional meal-time selector (inside manual modal) ──
+  mealTimeToggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    minHeight: 44, marginTop: 14,
+  },
+  mealTimeToggleText: { fontFamily: fontFamily.bodySemiBold, fontSize: 13, fontWeight: '600', color: colors.onSurfaceVariant, flex: 1, marginRight: 8 },
+  mealTimeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  mealTimePill: {
+    borderWidth: 1.5, borderColor: colors.outlineVariant, borderRadius: radii.pill,
+    paddingHorizontal: 14, paddingVertical: 10, minHeight: 44, justifyContent: 'center',
+    backgroundColor: colors.background,
+  },
+  mealTimePillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  mealTimePillText: { fontFamily: fontFamily.bodySemiBold, fontSize: 13, fontWeight: '600', color: colors.onSurfaceVariant },
+  mealTimePillTextActive: { color: colors.white },
+
+  // ── Meal Details (grouped by time, collapsible) ──
+  mealDetailsToggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    minHeight: 44, paddingVertical: 10, marginTop: spacing.stackSm,
+  },
+  mealDetailsToggleText: { ...typography.labelMd, fontWeight: '700', color: colors.primary },
+  mealGroup: { marginBottom: spacing.stackMd },
+  mealGroupHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6,
+  },
+  mealGroupTitle: { ...typography.labelMd, fontFamily: fontFamily.headingSemiBold, fontWeight: '700', color: colors.onSurface },
+  mealGroupSubtotal: { ...typography.labelSm, fontWeight: '700', color: colors.onSurfaceVariant },
+  mealGroupRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+    backgroundColor: colors.surface, borderRadius: radii.md, paddingHorizontal: 12, paddingVertical: 10,
+    minHeight: 44, borderWidth: 1, borderColor: colors.outlineVariant, marginBottom: spacing.stackSm,
+  },
+  mealGroupRowName: { ...typography.labelMd, fontWeight: '600', color: colors.onSurface, flex: 1, marginRight: 8 },
+  mealGroupRowMeta: { ...typography.labelSm, color: colors.onSurfaceVariant },
+
   autoNutrition: { backgroundColor: colors.infoBg, borderRadius: radii.md, padding: 14, marginTop: 12, borderWidth: 1, borderColor: colors.outlineVariant },
   autoNutritionTitle: { fontFamily: fontFamily.headingBold, fontSize: 12, fontWeight: '700', color: colors.primaryDark, marginBottom: 10 },
   autoNutritionRow: { flexDirection: 'row', alignItems: 'center' },

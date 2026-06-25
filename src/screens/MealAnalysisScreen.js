@@ -72,6 +72,11 @@ export default function MealAnalysisScreen({ navigation }) {
   const [editIndex, setEditIndex] = useState(null);
   const [manualFood, setManualFood] = useState('');
   const [manualPortion, setManualPortion] = useState('Medium');
+  // Optional meal-time tag (breakfast|lunch|dinner|snack) — hidden under a toggle.
+  const [manualMealType, setManualMealType] = useState(null);
+  const [showMealTime, setShowMealTime] = useState(false);
+  // Collapsible "Meal Details" grouped-by-time section (collapsed by default).
+  const [showMealDetails, setShowMealDetails] = useState(false);
   const [profile, setProfile] = useState(null);
 
   // Coach context: GLP-1 medication profile + recent weight history (optional/guarded)
@@ -539,6 +544,8 @@ export default function MealAnalysisScreen({ navigation }) {
     setManualFood('');
     setManualResult(null);
     setManualPortion('Medium');
+    setManualMealType(null);
+    setShowMealTime(false);
     setManualVisible(true);
   }
 
@@ -547,6 +554,9 @@ export default function MealAnalysisScreen({ navigation }) {
     setEditIndex(index);
     setManualFood(meal.foodType || '');
     setManualResult(null);
+    // Pre-select the existing meal-time tag (if any) and reveal the selector.
+    setManualMealType(meal.mealType || null);
+    setShowMealTime(!!meal.mealType);
     setManualVisible(true);
   }
 
@@ -594,6 +604,7 @@ export default function MealAnalysisScreen({ navigation }) {
       protein: Math.round(manualResult.protein * portionMultiplier),
       calories: Math.round(manualResult.calories * portionMultiplier),
       portionSize: manualPortion,
+      mealType: manualMealType || null,
     };
     // Session-only extras kept in memory for richer UI (not stored).
     const sessionExtras = {
@@ -759,6 +770,18 @@ export default function MealAnalysisScreen({ navigation }) {
   const balanceIcon = calBalance === null ? '—' : calBalance > 0 ? '🔴' : '🟢';
   const PORTIONS = ['Small', 'Medium', 'Large'];
   const portionLabel = (p) => ({ Small: isTr ? 'Küçük' : 'Small', Medium: isTr ? 'Orta' : 'Medium', Large: isTr ? 'Büyük' : 'Large' }[p] || p);
+
+  // Optional meal-time tag. Canonical stored values are English keys; labels localized.
+  const MEAL_TYPES = [
+    { id: 'breakfast', emoji: '🌅', tr: 'Sabah', en: 'Breakfast' },
+    { id: 'lunch', emoji: '☀️', tr: 'Öğle', en: 'Lunch' },
+    { id: 'dinner', emoji: '🌙', tr: 'Akşam', en: 'Dinner' },
+    { id: 'snack', emoji: '🍎', tr: 'Atıştırma', en: 'Snack' },
+  ];
+  const mealTypeLabel = (id) => {
+    const m = MEAL_TYPES.find((x) => x.id === id);
+    return m ? (isTr ? m.tr : m.en) : (isTr ? 'Belirtilmemiş' : 'Unspecified');
+  };
 
   // ── Daily insights: Muscle Health / Weekly Report ──────────
   const exerciseDaysPerWeek = profile?.exerciseDaysPerWeek ?? (exercises.length > 0 ? 1 : 0);
@@ -996,7 +1019,7 @@ export default function MealAnalysisScreen({ navigation }) {
                 />
               </View>
               <PrimaryButton
-                title={`🤖 ${isTr ? 'Yapay Zeka ile Analiz Et' : 'Analyze with AI'}`}
+                title={isTr ? 'Analiz Et' : 'Analyze'}
                 onPress={handleAnalyze}
                 loading={analyzing}
                 disabled={analyzing}
@@ -1334,6 +1357,65 @@ export default function MealAnalysisScreen({ navigation }) {
             </View>
           )}
         </AnimatedSection>
+
+        {/* ══════════════════ MEAL DETAILS (grouped by time, collapsible) ══════════════════ */}
+        {todayMeals.length > 0 && (
+          <AnimatedSection delay={330}>
+            <TouchableOpacity
+              style={styles.mealDetailsToggle}
+              onPress={() => setShowMealDetails((v) => !v)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showMealDetails }}
+              accessibilityLabel={isTr ? 'Öğün Detayları' : 'Meal Details'}
+            >
+              <Text style={styles.mealDetailsToggleText}>{isTr ? 'Öğün Detayları' : 'Meal Details'}</Text>
+              <Ionicons
+                name={showMealDetails ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+
+            {showMealDetails && (
+              <View>
+                {[...MEAL_TYPES.map((m) => m.id), null].map((groupId) => {
+                  const groupMeals = todayMeals
+                    .map((meal, index) => ({ meal, index }))
+                    .filter(({ meal }) => (meal.mealType || null) === groupId);
+                  if (groupMeals.length === 0) return null;
+                  const groupProtein = groupMeals.reduce((s, { meal }) => s + (meal.protein || 0), 0);
+                  const groupKcal = groupMeals.reduce((s, { meal }) => s + (meal.calories || 0), 0);
+                  return (
+                    <View key={groupId || 'unspecified'} style={styles.mealGroup}>
+                      <View style={styles.mealGroupHeader}>
+                        <Text style={styles.mealGroupTitle}>{mealTypeLabel(groupId)}</Text>
+                        <Text style={styles.mealGroupSubtotal}>
+                          {groupProtein}g · {groupKcal} kcal
+                        </Text>
+                      </View>
+                      {groupMeals.map(({ meal, index }) => (
+                        <TouchableOpacity
+                          key={meal.id != null ? String(meal.id) : meal.timestamp || String(index)}
+                          style={styles.mealGroupRow}
+                          onPress={() => openEdit(index)}
+                          activeOpacity={0.85}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${isTr ? 'Öğünü düzenle' : 'Edit meal'}: ${meal.foodType || ''}`}
+                        >
+                          <Text style={styles.mealGroupRowName} numberOfLines={1}>{meal.foodType}</Text>
+                          <Text style={styles.mealGroupRowMeta}>
+                            {meal.protein || 0}g{meal.calories ? ` · ${meal.calories} kcal` : ''}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+          </AnimatedSection>
+        )}
 
         {/* ══════════════════ TALK TO MAYA ══════════════════ */}
         <AnimatedSection delay={360}>
@@ -1925,18 +2007,60 @@ export default function MealAnalysisScreen({ navigation }) {
                 ))}
               </View>
 
-              {/* AI Analyze button */}
+              {/* Optional meal-time selector (collapsed by default) */}
+              <TouchableOpacity
+                style={styles.mealTimeToggle}
+                onPress={() => setShowMealTime((v) => !v)}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: showMealTime }}
+                accessibilityLabel={isTr ? 'Öğün zamanı (isteğe bağlı)' : 'Meal time (optional)'}
+              >
+                <Text style={styles.mealTimeToggleText}>
+                  {isTr ? 'Öğün zamanı (isteğe bağlı)' : 'Meal time (optional)'}
+                  {manualMealType ? ` · ${mealTypeLabel(manualMealType)}` : ''}
+                </Text>
+                <Ionicons
+                  name={showMealTime ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={colors.onSurfaceVariant}
+                />
+              </TouchableOpacity>
+              {showMealTime && (
+                <View style={styles.mealTimeRow}>
+                  {MEAL_TYPES.map((mt) => {
+                    const selected = manualMealType === mt.id;
+                    return (
+                      <TouchableOpacity
+                        key={mt.id}
+                        style={[styles.mealTimePill, selected && styles.mealTimePillActive]}
+                        onPress={() => setManualMealType(selected ? null : mt.id)}
+                        activeOpacity={0.8}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={isTr ? mt.tr : mt.en}
+                      >
+                        <Text style={[styles.mealTimePillText, selected && styles.mealTimePillTextActive]}>
+                          {mt.emoji} {isTr ? mt.tr : mt.en}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* Analyze button */}
               {!manualResult && (
                 <TouchableOpacity
                   style={[styles.analyzeManualBtn, manualAnalyzing && { opacity: 0.6 }]}
                   onPress={handleManualAnalyze}
                   disabled={manualAnalyzing}
                   accessibilityRole="button"
-                  accessibilityLabel={isTr ? 'Yapay zeka ile analiz et' : 'Analyze with AI'}
+                  accessibilityLabel={isTr ? 'Analiz et' : 'Analyze'}
                 >
                   {manualAnalyzing
                     ? <ActivityIndicator color={colors.white} size="small" />
-                    : <Text style={styles.analyzeManualBtnText}>🤖 {isTr ? 'Yapay Zeka ile Analiz Et' : 'Analyze with AI'}</Text>
+                    : <Text style={styles.analyzeManualBtnText}>{isTr ? 'Analiz Et' : 'Analyze'}</Text>
                   }
                 </TouchableOpacity>
               )}
@@ -1945,7 +2069,7 @@ export default function MealAnalysisScreen({ navigation }) {
               {manualResult && (
                 <View style={styles.autoNutrition}>
                   <Text style={styles.autoNutritionTitle}>
-                    🤖 {isTr ? 'AI Analizi' : 'AI Analysis'} — {manualResult.foodType}
+                    {isTr ? 'Analiz' : 'Analysis'} — {manualResult.foodType}
                   </Text>
                   <View style={styles.autoNutritionRow}>
                     <View style={styles.autoNutritionItem}>
