@@ -725,12 +725,6 @@ export default function DashboardScreen({ navigation }) {
   const displayName = profile?.name || user?.displayName || user?.email?.split('@')[0] || 'there';
   const greeting = getGreeting(language);
 
-  // Last 8 weight entries for chart — converted to display unit (kg or lbs)
-  const chartWeightData = weightHistory.slice(-8).map((entry) => ({
-    ...entry,
-    weight: toDisplayWeight(entry.weight),
-  }));
-
   const isTr = language === 'tr';
   const proteinMet = analyzedTodayProtein >= proteinTarget;
   const remainingProtein = proteinTarget - analyzedTodayProtein;
@@ -820,11 +814,6 @@ export default function DashboardScreen({ navigation }) {
       ? parseFloat((currentWeight - prevWeight).toFixed(1))
       : null;
 
-  // Mini sparkline — last few logged weights as relative bar heights.
-  const sparkPoints = chartWeightData.map((e) => e.weight).filter((w) => w != null);
-  const sparkMin = sparkPoints.length ? Math.min(...sparkPoints) : 0;
-  const sparkMax = sparkPoints.length ? Math.max(...sparkPoints) : 1;
-  const sparkRange = sparkMax - sparkMin || 1;
 
   // Today's food calories (real — summed from analyzed meals).
   const todayFoodCalories = todayMeals.reduce((sum, m) => sum + (m.calories || 0), 0);
@@ -958,28 +947,6 @@ export default function DashboardScreen({ navigation }) {
             ) : (
               <Text style={styles.bentoEmpty}>{isTr ? 'Kilo ekle' : 'Add weight'}</Text>
             )}
-            <View style={styles.spark}>
-              {(sparkPoints.length > 0
-                ? sparkPoints
-                : [0.5, 0.7, 0.6, 0.8, 1]
-              ).map((w, i, arr) => {
-                const h =
-                  sparkPoints.length > 0
-                    ? 0.3 + 0.7 * ((w - sparkMin) / sparkRange)
-                    : w;
-                const isLast = i === arr.length - 1;
-                return (
-                  <View
-                    key={i}
-                    style={[
-                      styles.sparkBar,
-                      { height: `${Math.round(h * 100)}%` },
-                      isLast && styles.sparkBarLast,
-                    ]}
-                  />
-                );
-              })}
-            </View>
           </TouchableOpacity>
 
           {/* Streak */}
