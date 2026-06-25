@@ -16,6 +16,7 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -35,6 +36,8 @@ import { getMedicationProfile } from '../services/medicationService';
 import { sendCoachMessage } from '../services/coachChatService';
 import AIConsentModal from '../components/AIConsentModal';
 import MayaAvatar from '../components/MayaAvatar';
+import AnimatedSection from '../components/AnimatedSection';
+import ProteinBarChart from '../components/ProteinBarChart';
 import { scheduleDailyMotivation } from '../services/notificationService';
 import * as healthkitService from '../services/healthkitService';
 import { useGamification } from '../context/GamificationContext';
@@ -94,6 +97,9 @@ export default function MealAnalysisScreen({ navigation }) {
   const [latestHeartRate, setLatestHeartRate] = useState(null);     // bpm
   const [restingHeartRate, setRestingHeartRate] = useState(null);   // bpm
   const [healthLoading, setHealthLoading] = useState(false);
+
+  // Collapsible "more details" block (projection + sustainability + factors)
+  const [showMoreInsights, setShowMoreInsights] = useState(false);
 
   // Coach chat
   const [chatVisible, setChatVisible] = useState(false);
@@ -818,14 +824,6 @@ export default function MealAnalysisScreen({ navigation }) {
   const avgPct = Math.max(0, Math.min(1, avgProteinRatio));
   const avgPctLabel = Math.round(avgProteinRatio * 100);
 
-  const weekRangeLabel = (() => {
-    const fmt = (dt) => dt.toLocaleDateString(isTr ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'short' });
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - 6);
-    return `${fmt(start)} – ${fmt(end)}`;
-  })();
-
   // Weekly insight cards (recommendations), driven by the qualitative
   // protein/muscle-protection trend — no fabricated kg-of-muscle figures.
   const recommendations = (() => {
@@ -859,6 +857,32 @@ export default function MealAnalysisScreen({ navigation }) {
     return recs;
   })();
 
+  // ── Redesign-derived (real data only) ──────────────────────────────────────
+  // User initial for the top-bar avatar (no stock photo).
+  const userInitial = (
+    profile?.name ||
+    user?.displayName ||
+    user?.email ||
+    'U'
+  ).trim().charAt(0).toUpperCase();
+
+  // Maya's short encouragement line, derived from today's real protein progress.
+  const proteinMetToday = todayProteinRatio >= 1;
+  const mayaLine = proteinMetToday
+    ? (isTr ? 'Bugün harika bir tutarlılık! 💪' : 'Great consistency today! 💪')
+    : todayProteinRatio >= 0.6
+    ? (isTr ? 'Yolundasın — proteine biraz daha odaklan.' : "You're on track — focus on protein.")
+    : todayMeals.length > 0
+    ? (isTr ? 'İyi başladın — protein eklemeye devam et.' : 'Good start — keep adding protein.')
+    : (isTr ? 'Hadi başlayalım — ilk öğününü ekle.' : "Let's begin — log your first meal.");
+
+  // Eaten kcal (real, summed). Calorie target derived from BMR when available.
+  const eatenKcal = totalCalories;
+  const kcalTarget = bmr > 0 ? bmr : null;
+
+  // Primary recommendation line for the weekly hero (first of the real list).
+  const primaryRec = recommendations[0];
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <AIConsentModal
@@ -878,70 +902,77 @@ export default function MealAnalysisScreen({ navigation }) {
           setPendingAnalysis(null);
         }}
       />
+      {/* ── Top app bar (matches Dashboard) ── */}
+      <View style={styles.appBar}>
+        <View style={styles.appBarAvatar} accessibilityElementsHidden importantForAccessibility="no">
+          <Text style={styles.appBarAvatarText}>{userInitial}</Text>
+        </View>
+        <Text style={styles.appBarTitle}>GLP-1 Coach</Text>
+        <TouchableOpacity
+          style={styles.appBarBell}
+          onPress={openChat}
+          accessibilityRole="button"
+          accessibilityLabel={isTr ? 'Koç Maya ile sohbet et' : 'Chat with coach Maya'}
+        >
+          <Ionicons name="notifications-outline" size={24} color={colors.onSurfaceVariant} />
+        </TouchableOpacity>
+      </View>
+
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1, marginRight: 12 }}>
-            <Text style={styles.heading}>{t('mealAnalysis')}</Text>
-            <Text style={styles.subheading}>
-              {isTr ? 'Fotoğraf çek veya manuel ekle' : 'Analyze a photo or add manually'}
-            </Text>
+        {/* ── Maya encouragement bubble ── */}
+        <AnimatedSection delay={0} style={styles.mayaRow}>
+          <MayaAvatar size={40} />
+          <View style={styles.mayaBubble}>
+            <Text style={styles.mayaBubbleText}>{mayaLine}</Text>
           </View>
-          <TouchableOpacity
-            style={styles.coachBtn}
-            onPress={openChat}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel={isTr ? 'Koç ile sohbet et' : 'Chat with coach'}
-          >
-            <MayaAvatar size={22} style={{ marginRight: 6 }} />
-            <Text style={styles.coachBtnText}>Maya</Text>
-          </TouchableOpacity>
-        </View>
+        </AnimatedSection>
 
-        {/* Action Buttons */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.cameraBtn}
-            onPress={takePhoto}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={isTr ? 'Fotoğraf çek' : 'Take photo'}
-          >
-            <Text style={styles.photoBtnIcon}>📸</Text>
-            <Text style={styles.photoBtnText}>{isTr ? 'Çek' : 'Camera'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.photoBtn}
-            onPress={pickImage}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={isTr ? 'Galeriden seç' : 'Pick from gallery'}
-          >
-            <Text style={styles.photoBtnIcon}>🖼️</Text>
-            <Text style={styles.photoBtnText}>{isTr ? 'Galeri' : 'Gallery'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.manualBtn}
-            onPress={openManualAdd}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={isTr ? 'Manuel öğün ekle' : 'Add meal manually'}
-          >
-            <Text style={styles.manualBtnIcon}>✏️</Text>
-            <Text style={styles.manualBtnText}>{isTr ? 'Manuel' : 'Manual'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.exerciseBtn}
-            onPress={() => setExerciseModalVisible(true)}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel={isTr ? 'Egzersiz ekle' : 'Log exercise'}
-          >
-            <Text style={styles.manualBtnIcon}>🏋️</Text>
-            <Text style={styles.exerciseBtnText}>{isTr ? 'Spor' : 'Exercise'}</Text>
-          </TouchableOpacity>
-        </View>
+        {/* ── Capture / add actions ── */}
+        <AnimatedSection delay={60}>
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={styles.cameraBtn}
+              onPress={takePhoto}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={isTr ? 'Fotoğraf çek' : 'Take photo'}
+            >
+              <Ionicons name="camera" size={22} color={colors.onPrimary} />
+              <Text style={styles.cameraBtnText}>{isTr ? 'Çek' : 'Camera'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionPill}
+              onPress={pickImage}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={isTr ? 'Galeriden seç' : 'Pick from gallery'}
+            >
+              <Ionicons name="image-outline" size={20} color={colors.primary} />
+              <Text style={styles.actionPillText}>{isTr ? 'Galeri' : 'Gallery'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionPill}
+              onPress={openManualAdd}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={isTr ? 'Manuel öğün ekle' : 'Add meal manually'}
+            >
+              <Ionicons name="create-outline" size={20} color={colors.primary} />
+              <Text style={styles.actionPillText}>{isTr ? 'Manuel' : 'Manual'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionPill}
+              onPress={() => setExerciseModalVisible(true)}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={isTr ? 'Egzersiz ekle' : 'Log exercise'}
+            >
+              <Ionicons name="barbell-outline" size={20} color={colors.success} />
+              <Text style={[styles.actionPillText, { color: colors.success }]}>{isTr ? 'Spor' : 'Exercise'}</Text>
+            </TouchableOpacity>
+          </View>
+        </AnimatedSection>
 
         {/* Image Picker */}
         {imageUri && (
@@ -1051,498 +1082,553 @@ export default function MealAnalysisScreen({ navigation }) {
           </Card>
         )}
 
-        {/* Apple Watch / HealthKit Card (iOS only, when available) */}
-        {healthAvailable && (
-          <Card elevation="md" style={styles.watchCard}>
-            <View style={styles.watchHeaderRow}>
-              <Text style={styles.watchTitle}>
-                {isTr ? '⌚ Apple Watch & Sağlık' : '⌚ Apple Watch & Health'}
-              </Text>
-              {healthAuthorized && (
-                <TouchableOpacity
-                  onPress={refreshHealthData}
-                  disabled={healthLoading}
-                  style={styles.watchRefreshBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={isTr ? 'Sağlık verisini yenile' : 'Refresh health data'}
-                >
-                  {healthLoading
-                    ? <ActivityIndicator size="small" color={colors.primary} />
-                    : <Text style={styles.watchRefreshText}>{isTr ? '↻ Yenile' : '↻ Refresh'}</Text>}
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {!healthAuthorized ? (
-              <>
-                <Text style={styles.watchConnectNote}>
-                  {isTr
-                    ? 'Apple Watch ile yakılan gerçek aktif kaloriyi ve nabzını otomatik takip et.'
-                    : 'Sync your real active calories and heart rate from Apple Watch automatically.'}
-                </Text>
-                <TouchableOpacity
-                  style={[styles.watchConnectBtn, healthLoading && { opacity: 0.6 }]}
-                  onPress={connectAppleWatch}
-                  disabled={healthLoading}
-                  activeOpacity={0.85}
-                  accessibilityRole="button"
-                  accessibilityLabel={isTr ? 'Apple Watch\'a bağlan' : 'Connect Apple Watch'}
-                >
-                  {healthLoading
-                    ? <ActivityIndicator color={colors.white} size="small" />
-                    : <Text style={styles.watchConnectBtnText}>🔥⌚ {isTr ? 'Apple Watch\'a Bağlan' : 'Connect Apple Watch'}</Text>}
-                </TouchableOpacity>
-              </>
-            ) : (
-              <View style={styles.watchStatsRow}>
-                <View style={styles.watchStatItem}>
-                  <Text style={styles.watchStatValue}>
-                    {watchActiveEnergy != null ? watchActiveEnergy : '—'}
-                  </Text>
-                  <Text style={styles.watchStatLabel}>
-                    {isTr ? '🔥 Aktif kcal' : '🔥 Active kcal'}
-                  </Text>
-                </View>
-                <View style={styles.watchStatDivider} />
-                <View style={styles.watchStatItem}>
-                  <Text style={styles.watchStatValue}>
-                    {latestHeartRate != null ? latestHeartRate : '—'}
-                  </Text>
-                  <Text style={styles.watchStatLabel}>
-                    {isTr ? '❤️ Nabız (bpm)' : '❤️ Heart rate (bpm)'}
-                  </Text>
-                </View>
-                <View style={styles.watchStatDivider} />
-                <View style={styles.watchStatItem}>
-                  <Text style={styles.watchStatValue}>
-                    {restingHeartRate != null ? restingHeartRate : '—'}
-                  </Text>
-                  <Text style={styles.watchStatLabel}>
-                    {isTr ? '🫀 Dinlenme (bpm)' : '🫀 Resting (bpm)'}
-                  </Text>
-                </View>
-              </View>
-            )}
-          </Card>
-        )}
-
-        {/* Calorie Balance Card */}
-        <Card elevation="md" style={styles.balanceCard}>
-          <Text style={styles.balanceTitle}>{isTr ? '⚖️ Günlük Kalori Dengesi' : '⚖️ Daily Calorie Balance'}</Text>
-          <View style={styles.balanceRow}>
-            <View style={styles.balanceItem}>
-              <Text style={styles.balanceValue}>{totalCalories > 0 ? totalCalories : '—'}</Text>
-              <Text style={styles.balanceLabel}>{isTr ? '🍽️ Yenen' : '🍽️ Eaten'}</Text>
-            </View>
-            <Text style={styles.balanceMinus}>−</Text>
-            <View style={styles.balanceItem}>
-              <Text style={styles.balanceValue}>{bmr}</Text>
-              <Text style={styles.balanceLabel}>{isTr ? '🔥 BMR' : '🔥 BMR'}</Text>
-            </View>
-            <Text style={styles.balanceMinus}>−</Text>
-            <View style={styles.balanceItem}>
-              <Text style={[styles.balanceValue, usingWatchEnergy && { color: colors.success }]}>
-                {activeCalories > 0 ? activeCalories : '—'}
-              </Text>
-              <Text style={[styles.balanceLabel, usingWatchEnergy && { color: colors.success }]}>
-                {usingWatchEnergy
-                  ? '🔥⌚ Apple Watch'
-                  : (isTr ? '🏋️ Spor' : '🏋️ Exercise')}
-              </Text>
-            </View>
-            <Text style={styles.balanceMinus}>=</Text>
-            <View style={[styles.balanceItem, styles.balanceResult, { borderColor: balanceColor }]}>
-              <Text style={[styles.balanceResultValue, { color: balanceColor }]}>
-                {calBalance === null ? '—' : (calBalance > 0 ? `+${calBalance}` : `${calBalance}`)}
-              </Text>
-              <Text style={[styles.balanceLabel, { color: balanceColor }]}>kcal</Text>
-            </View>
-          </View>
-          {calBalance !== null && (
-            <Text style={[styles.balanceNote, { color: balanceColor }]}>
-              {calBalance > 0
-                ? (isTr ? `${balanceIcon} Kalori fazlası — daha az ye veya daha fazla hareket et` : `${balanceIcon} Calorie surplus — eat less or move more`)
-                : (isTr ? `${balanceIcon} Kalori açığı — kas koruyarak yağ yakıyorsun` : `${balanceIcon} Calorie deficit — burning fat while preserving muscle`)}
-            </Text>
-          )}
-          <Text style={styles.balanceBmrNote}>
-            {isTr ? `BMR ${userWeight}kg ${userGender === 'male' ? '(erkek)' : userGender === 'female' ? '(kadın)' : ''} baz alınarak hesaplandı` : `BMR calculated using ${userWeight}kg ${userGender === 'male' ? '(male)' : userGender === 'female' ? '(female)' : ''}`}
-          </Text>
-          {usingWatchEnergy && (
-            <Text style={[styles.balanceBmrNote, { color: colors.success, marginTop: 2 }]}>
-              {isTr
-                ? '🔥⌚ Aktif kalori Apple Watch\'tan alındı (manuel tahmin yerine)'
-                : '🔥⌚ Active calories from Apple Watch (instead of manual estimate)'}
-            </Text>
-          )}
-        </Card>
-
-        {/* Today's Meals */}
-        <View style={styles.todayHeader}>
-          <Text style={styles.todaySectionTitle}>{t('todayMeals')}</Text>
-          {todayMeals.length > 0 && (
-            <View style={styles.todayTotals}>
-              <Text style={styles.todayTotalBadge}>🥩 {totalProtein}g</Text>
-              {totalCalories > 0 && <Text style={styles.todayTotalBadge}>🔥 {totalCalories} kcal</Text>}
-            </View>
-          )}
-        </View>
-
-        {todayMeals.length === 0 ? (
-          <Card elevation="sm" style={styles.emptyCard} contentStyle={styles.emptyCardContent}>
-            <Text style={styles.emptyEmoji}>🍽️</Text>
-            <Text style={styles.emptyText}>{isTr ? 'Henüz öğün eklenmedi' : 'No meals added yet'}</Text>
-          </Card>
-        ) : (
-          <Card padding={0} elevation="md" style={styles.mealsCard}>
-            <FlatList
-              data={todayMeals}
-              scrollEnabled={false}
-              keyExtractor={(item, index) => (item.id != null ? String(item.id) : item.timestamp || String(index))}
-              renderItem={({ item: meal, index }) => (
-                <View style={[styles.mealItem, index < todayMeals.length - 1 && styles.mealBorder]}>
-                  <Text style={styles.mealEmoji}>{getFoodEmoji(meal.foodType)}</Text>
-                  <View style={styles.mealInfo}>
-                    <Text style={styles.mealName}>{meal.foodType}</Text>
-                    <Text style={styles.mealMeta}>
-                      {[
-                        formatTime(meal.timestamp),
-                        meal.calories ? `${meal.calories} kcal` : '',
-                        meal.portionSize ? portionLabel(meal.portionSize) : '',
-                      ].filter(Boolean).join(' · ')}
+        {/* ══════════════════ WEEKLY REPORT HERO ══════════════════ */}
+        <AnimatedSection delay={120}>
+          <Card elevation="md" style={styles.weeklyCard}>
+            <View style={styles.weeklyTopRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.weeklyKicker}>{isTr ? 'HAFTALIK RAPOR' : 'WEEKLY REPORT'}</Text>
+                {hasWeeklyData ? (
+                  <View style={styles.weeklyChangeRow}>
+                    <Ionicons
+                      name={weeklyChange > 0 ? 'trending-down' : weeklyChange < 0 ? 'trending-up' : 'remove'}
+                      size={22}
+                      color={weeklyChange > 0 ? colors.success : weeklyChange < 0 ? colors.danger : colors.onSurfaceVariant}
+                    />
+                    <Text
+                      style={[
+                        styles.weeklyChangeValue,
+                        { color: weeklyChange > 0 ? colors.success : weeklyChange < 0 ? colors.danger : colors.onSurface },
+                      ]}
+                    >
+                      {weeklyChange > 0 ? '▼ ' : weeklyChange < 0 ? '▲ ' : ''}
+                      {formatWeight(weeklyChangeAbs)}
+                    </Text>
+                    <Text style={styles.weeklyChangeSub}>
+                      {weeklyChange > 0
+                        ? (isTr ? 'bu hafta' : 'this week')
+                        : weeklyChange < 0
+                        ? (isTr ? 'bu hafta alındı' : 'this week')
+                        : (isTr ? 'değişim yok' : 'no change')}
                     </Text>
                   </View>
-                  <Text style={styles.mealProtein}>{meal.protein}g</Text>
-                  <TouchableOpacity
-                    style={styles.editBtn}
-                    onPress={() => openEdit(index)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${isTr ? 'Öğünü düzenle' : 'Edit meal'}: ${meal.foodType || ''}`}
+                ) : (
+                  <Text style={styles.weeklyEmptyValue}>
+                    {currentWeight != null
+                      ? formatWeight(currentWeight)
+                      : (isTr ? 'Henüz kilo yok' : 'No weight yet')}
+                  </Text>
+                )}
+                {hasWeeklyData && (
+                  <Text style={styles.weeklyTotalLost}>
+                    {isTr
+                      ? `Toplam kayıp: ${formatWeight(Math.abs(totalWeightLost))}`
+                      : `Total lost: ${formatWeight(Math.abs(totalWeightLost))}`}
+                  </Text>
+                )}
+              </View>
+
+              {/* Avg protein ring (right) */}
+              <Ring
+                progress={avgPct}
+                size={68}
+                strokeWidth={7}
+                color={avgPct >= 1 ? colors.success : avgPct >= 0.6 ? colors.warning : colors.danger}
+                trackColor={colors.outlineVariant}
+              >
+                <Text
+                  style={[
+                    styles.weeklyRingValue,
+                    { color: avgPct >= 1 ? colors.success : avgPct >= 0.6 ? colors.warning : colors.danger },
+                  ]}
+                >
+                  {avgPctLabel}%
+                </Text>
+                <Text style={styles.weeklyRingSub}>{isTr ? 'Ort.' : 'Avg'}</Text>
+              </Ring>
+            </View>
+
+            {hasWeeklyData ? (
+              <View style={styles.recBox}>
+                <View style={styles.recIcon}>
+                  <Ionicons name="bulb-outline" size={18} color={colors.primary} />
+                </View>
+                <Text style={styles.recText}>
+                  <Text style={styles.recBold}>{isTr ? 'Öneri: ' : 'Recommendation: '}</Text>
+                  {primaryRec}
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.weeklyEmptyHint}>
+                {isTr
+                  ? 'Haftalık değişimi görmek için 2 farklı günde kilo gir. (Aynı gün birden çok giriş tek kayıt sayılır.)'
+                  : 'Weigh in on 2 different days to see your weekly change. (Multiple entries on the same day count as one.)'}
+              </Text>
+            )}
+          </Card>
+        </AnimatedSection>
+
+        {/* ══════════════════ PROTEIN INTAKE (7-day bar chart) ══════════════════ */}
+        <AnimatedSection delay={180}>
+          <Card elevation="md" style={styles.chartCard}>
+            <View style={styles.chartHeader}>
+              <Text style={styles.sectionHeading}>{isTr ? 'Protein Alımı' : 'Protein Intake'}</Text>
+              <View style={styles.chartTargetChip}>
+                <Text style={styles.chartTargetChipText}>
+                  {isTr ? `Hedef: ${proteinTarget}g` : `Target: ${proteinTarget}g`}
+                </Text>
+              </View>
+            </View>
+            <ProteinBarChart rows={dailyProtein} target={proteinTarget} isTr={isTr} />
+            <View style={styles.chartLegend}>
+              <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
+              <Text style={styles.legendText}>{isTr ? 'Hedefe ulaştı' : 'Met'}</Text>
+              <View style={[styles.legendDot, { backgroundColor: colors.warning, marginLeft: 12 }]} />
+              <Text style={styles.legendText}>{isTr ? 'Kısmen' : 'Partial'}</Text>
+              <View style={[styles.legendDot, { backgroundColor: colors.danger, marginLeft: 12 }]} />
+              <Text style={styles.legendText}>{isTr ? 'Düşük' : 'Low'}</Text>
+            </View>
+          </Card>
+        </AnimatedSection>
+
+        {/* ══════════════════ MUSCLE HEALTH ══════════════════ */}
+        <AnimatedSection delay={240}>
+          {(() => {
+            const isProtected = muscleProtection.toneKey === 'success';
+            const accent = isProtected ? colors.success : muscleTonePalette.fg;
+            return (
+              <Card
+                elevation="md"
+                style={[styles.muscleCard, isProtected && { backgroundColor: colors.successBg }]}
+              >
+                <View style={styles.muscleHeader}>
+                  <View
+                    style={[
+                      styles.muscleShield,
+                      { backgroundColor: isProtected ? 'rgba(22,163,74,0.18)' : colors.surfaceVariant },
+                    ]}
                   >
-                    <Text style={styles.editBtnText}>✏️</Text>
-                  </TouchableOpacity>
+                    <Ionicons name="shield-checkmark" size={26} color={accent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.muscleSectionLabel}>{isTr ? 'Kas Sağlığı' : 'Muscle Health'}</Text>
+                    <Text style={[styles.muscleLabel, { color: accent }]}>
+                      {muscleProtection.label(language)}
+                    </Text>
+                    <Text style={styles.muscleDesc}>{muscleProtection.description(language)}</Text>
+                  </View>
+                </View>
+                <Text style={styles.muscleNotClinical}>{notClinicalNote(language)}</Text>
+
+                {/* Factor breakdown: protein / exercise / loss-rate */}
+                <View style={styles.scoreFactors}>
+                  <View style={styles.scoreFactor}>
+                    <Text style={styles.scoreFactorDot}>
+                      {todayProteinRatio >= 0.8 ? '🟢' : todayProteinRatio >= 0.6 ? '🟡' : '🔴'}
+                    </Text>
+                    <Text style={styles.scoreFactorText}>
+                      {isTr
+                        ? `Protein: ${todayProteinRatio >= 0.8 ? 'İyi' : todayProteinRatio >= 0.6 ? 'Yetersiz' : 'Kritik'}`
+                        : `Protein: ${todayProteinRatio >= 0.8 ? 'Good' : todayProteinRatio >= 0.6 ? 'Low' : 'Critical'}`}
+                    </Text>
+                  </View>
+                  <View style={styles.scoreFactor}>
+                    <Text style={styles.scoreFactorDot}>
+                      {exerciseDaysPerWeek >= 2 ? '🟢' : exerciseDaysPerWeek >= 1 ? '🟡' : '🔴'}
+                    </Text>
+                    <Text style={styles.scoreFactorText}>
+                      {isTr
+                        ? `Egzersiz: ${exerciseDaysPerWeek >= 2 ? 'Aktif' : exerciseDaysPerWeek >= 1 ? 'Az' : 'Yok'}`
+                        : `Exercise: ${exerciseDaysPerWeek >= 2 ? 'Active' : exerciseDaysPerWeek >= 1 ? 'Low' : 'None'}`}
+                    </Text>
+                  </View>
+                  <View style={styles.scoreFactor}>
+                    <Text style={styles.scoreFactorDot}>
+                      {weeklyRate <= 0.5 ? '🟢' : weeklyRate <= 1.0 ? '🟡' : '🔴'}
+                    </Text>
+                    <Text style={styles.scoreFactorText}>
+                      {isTr
+                        ? `Kayıp hızı: ${weeklyRate <= 0.5 ? 'Normal' : weeklyRate <= 1.0 ? 'Orta' : 'Hızlı'}`
+                        : `Loss rate: ${weeklyRate <= 0.5 ? 'Normal' : weeklyRate <= 1.0 ? 'Moderate' : 'Fast'}`}
+                    </Text>
+                  </View>
+                </View>
+              </Card>
+            );
+          })()}
+          <MedicalDisclaimer variant="medical" style={styles.disclaimerSpacing} />
+        </AnimatedSection>
+
+        {/* ══════════════════ TODAY'S MEALS ══════════════════ */}
+        <AnimatedSection delay={300}>
+          <View style={styles.mealsSectionHeader}>
+            <Text style={styles.sectionHeading}>{t('todayMeals')}</Text>
+            <Text style={styles.mealsKcal}>
+              {kcalTarget != null
+                ? `${eatenKcal} / ${kcalTarget} kcal`
+                : (eatenKcal > 0 ? `${eatenKcal} kcal` : '—')}
+            </Text>
+          </View>
+
+          {todayMeals.length === 0 ? (
+            <Card elevation="sm" style={styles.emptyCard} contentStyle={styles.emptyCardContent}>
+              <MayaAvatar size={44} />
+              <Text style={styles.emptyText}>
+                {isTr ? 'Henüz öğün eklenmedi' : 'No meals added yet'}
+              </Text>
+              <TouchableOpacity
+                style={styles.emptyCta}
+                onPress={openManualAdd}
+                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel={isTr ? 'İlk öğününü ekle' : 'Add your first meal'}
+              >
+                <Ionicons name="add" size={18} color={colors.onPrimary} />
+                <Text style={styles.emptyCtaText}>{isTr ? 'Öğün ekle' : 'Add a meal'}</Text>
+              </TouchableOpacity>
+            </Card>
+          ) : (
+            <View style={styles.mealsList}>
+              {todayMeals.map((meal, index) => (
+                <TouchableOpacity
+                  key={meal.id != null ? String(meal.id) : meal.timestamp || String(index)}
+                  style={styles.mealRow}
+                  onPress={() => openEdit(index)}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${isTr ? 'Öğünü düzenle' : 'Edit meal'}: ${meal.foodType || ''}`}
+                >
+                  {meal.imageUri ? (
+                    <Image source={{ uri: meal.imageUri }} style={styles.mealThumb} resizeMode="cover" />
+                  ) : (
+                    <View style={styles.mealThumbEmoji}>
+                      <Text style={styles.mealThumbEmojiText}>{getFoodEmoji(meal.foodType)}</Text>
+                    </View>
+                  )}
+                  <View style={styles.mealInfo}>
+                    <Text style={styles.mealName} numberOfLines={1}>{meal.foodType}</Text>
+                    <View style={styles.mealMetaRow}>
+                      <View style={styles.proteinPill}>
+                        <Text style={styles.proteinPillText}>
+                          {isTr ? `${meal.protein}g protein` : `${meal.protein}g protein`}
+                        </Text>
+                      </View>
+                      {!!meal.calories && (
+                        <Text style={styles.mealKcal}>{meal.calories} kcal</Text>
+                      )}
+                      {!!formatTime(meal.timestamp) && (
+                        <Text style={styles.mealTime}>{formatTime(meal.timestamp)}</Text>
+                      )}
+                    </View>
+                  </View>
                   <TouchableOpacity
-                    style={styles.deleteBtn}
+                    style={styles.mealDelete}
                     onPress={() => handleDelete(index)}
                     accessibilityRole="button"
                     accessibilityLabel={`${isTr ? 'Öğünü sil' : 'Delete meal'}: ${meal.foodType || ''}`}
                   >
-                    <Text style={styles.deleteBtnText}>🗑️</Text>
+                    <Ionicons name="trash-outline" size={18} color={colors.outline} />
                   </TouchableOpacity>
-                </View>
-              )}
-            />
-          </Card>
-        )}
-
-        {/* Today's Exercises */}
-        <View style={[styles.todayHeader, { marginTop: 24 }]}>
-          <Text style={styles.todaySectionTitle}>{isTr ? '🏋️ Bugünkü Egzersizler' : '🏋️ Today\'s Exercises'}</Text>
-          {exercises.length > 0 && (
-            <Text style={styles.todayTotalBadge}>
-              🔥 {exercises.reduce((s, e) => s + (e.caloriesBurned || 0), 0)} kcal
-            </Text>
-          )}
-        </View>
-        {exercises.length === 0 ? (
-          <Card elevation="sm" style={styles.emptyCard} contentStyle={styles.emptyCardContent}>
-            <Text style={styles.emptyEmoji}>🏃</Text>
-            <Text style={styles.emptyText}>{isTr ? 'Henüz egzersiz eklenmedi' : 'No exercises logged yet'}</Text>
-          </Card>
-        ) : (
-          <Card padding={0} elevation="md" style={styles.mealsCard}>
-            <FlatList
-              data={exercises}
-              scrollEnabled={false}
-              keyExtractor={(item, index) => item.timestamp || String(index)}
-              renderItem={({ item: ex, index }) => {
-                const exName = EXERCISE_TYPES.find(e => e.id === ex.type)?.[isTr ? 'tr' : 'en'] || ex.name;
-                return (
-                  <View style={[styles.mealItem, index < exercises.length - 1 && styles.mealBorder]}>
-                    <Text style={styles.mealEmoji}>{ex.emoji}</Text>
-                    <View style={styles.mealInfo}>
-                      <Text style={styles.mealName}>{exName}</Text>
-                      <Text style={styles.mealMeta}>
-                        {ex.duration} min · {isTr ? (ex.intensity === 'light' ? 'Hafif' : ex.intensity === 'moderate' ? 'Orta' : 'Yoğun') : ex.intensity}
-                        {ex.weightUsed ? ` · ${ex.weightUsed} kg` : ''}
-                      </Text>
-                    </View>
-                    <Text style={[styles.mealProtein, { color: colors.success }]}>{ex.caloriesBurned} kcal</Text>
-                    <TouchableOpacity
-                      style={styles.editBtn}
-                      onPress={() => openEditExercise(index)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${isTr ? 'Egzersizi düzenle' : 'Edit exercise'}: ${exName}`}
-                    >
-                      <Text style={styles.editBtnText}>✏️</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.deleteBtn}
-                      onPress={() => handleDeleteExercise(index)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${isTr ? 'Egzersizi sil' : 'Delete exercise'}: ${exName}`}
-                    >
-                      <Text style={styles.deleteBtnText}>🗑️</Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              }}
-            />
-          </Card>
-        )}
-
-        {/* ═══════════════════════════════════════════════════════════════════ */}
-        {/* DAILY INSIGHTS — Muscle Health + 14-Day Projection + Weekly Report  */}
-        {/* ═══════════════════════════════════════════════════════════════════ */}
-
-        {/* ── Kas Sağlığı / Muscle Health ── */}
-        <SectionTitle
-          title={isTr ? '🧠 Kas Sağlığı' : '🧠 Muscle Health'}
-          style={styles.insightsSection}
-        />
-        <Card elevation="md" style={[styles.insightCardBlock, { backgroundColor: muscleTonePalette.bg }]}>
-          <View style={styles.muscleCardRow}>
-            <Text style={styles.muscleCardEmoji}>{muscleProtection.emoji}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.muscleCardLabel, { color: muscleTonePalette.fg }]}>
-                {muscleProtection.label(language)}
-              </Text>
-              <Text style={styles.muscleCardDesc}>{muscleProtection.description(language)}</Text>
-            </View>
-          </View>
-          <Text style={styles.muscleCardNotClinical}>{notClinicalNote(language)}</Text>
-
-          {/* Factor breakdown: protein / exercise / loss-rate */}
-          <View style={styles.scoreFactors}>
-            <View style={styles.scoreFactor}>
-              <Text style={styles.scoreFactorDot}>
-                {todayProteinRatio >= 0.8 ? '🟢' : todayProteinRatio >= 0.6 ? '🟡' : '🔴'}
-              </Text>
-              <Text style={styles.scoreFactorText}>
-                {isTr
-                  ? `Protein: ${todayProteinRatio >= 0.8 ? 'İyi' : todayProteinRatio >= 0.6 ? 'Yetersiz' : 'Kritik'}`
-                  : `Protein: ${todayProteinRatio >= 0.8 ? 'Good' : todayProteinRatio >= 0.6 ? 'Low' : 'Critical'}`}
-              </Text>
-            </View>
-            <View style={styles.scoreFactor}>
-              <Text style={styles.scoreFactorDot}>
-                {exerciseDaysPerWeek >= 2 ? '🟢' : exerciseDaysPerWeek >= 1 ? '🟡' : '🔴'}
-              </Text>
-              <Text style={styles.scoreFactorText}>
-                {isTr
-                  ? `Egzersiz: ${exerciseDaysPerWeek >= 2 ? 'Aktif' : exerciseDaysPerWeek >= 1 ? 'Az' : 'Yok'}`
-                  : `Exercise: ${exerciseDaysPerWeek >= 2 ? 'Active' : exerciseDaysPerWeek >= 1 ? 'Low' : 'None'}`}
-              </Text>
-            </View>
-            <View style={styles.scoreFactor}>
-              <Text style={styles.scoreFactorDot}>
-                {weeklyRate <= 0.5 ? '🟢' : weeklyRate <= 1.0 ? '🟡' : '🔴'}
-              </Text>
-              <Text style={styles.scoreFactorText}>
-                {isTr
-                  ? `Kayıp hızı: ${weeklyRate <= 0.5 ? 'Normal' : weeklyRate <= 1.0 ? 'Orta' : 'Hızlı'}`
-                  : `Loss rate: ${weeklyRate <= 0.5 ? 'Normal' : weeklyRate <= 1.0 ? 'Moderate' : 'Fast'}`}
-              </Text>
-            </View>
-          </View>
-        </Card>
-
-        <MedicalDisclaimer variant="medical" style={styles.insightCardBlock} />
-
-        {/* ── Sustainability Score ── */}
-        <Card elevation="md" style={[styles.insightCardBlock, { backgroundColor: reboundInfo.bg }]}>
-          <View style={styles.riskCardRow}>
-            <Text style={styles.riskCardEmoji}>{reboundInfo.emoji}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.riskCardLabel, { color: reboundInfo.color }]}>{reboundInfo.label}</Text>
-              <Text style={styles.riskCardDesc}>{reboundInfo.desc}</Text>
-            </View>
-          </View>
-          {riskData.factors.length > 0 && (
-            <View style={styles.riskFactors}>
-              <Text style={styles.riskFactorsTitle}>{isTr ? 'Risk faktörleri:' : 'Risk factors:'}</Text>
-              {riskData.factors.map((f, i) => (
-                <Text key={i} style={styles.riskFactor}>✗ {f}</Text>
+                </TouchableOpacity>
               ))}
             </View>
           )}
-        </Card>
+        </AnimatedSection>
 
-        {/* ── 14 Günlük Projeksiyon / 14-Day Projection ── */}
-        {showProjection && (
-          <>
-            <SectionTitle
-              title={isTr ? '📈 14 Günlük Projeksiyon' : '📈 14-Day Projection'}
-              style={styles.insightsSection}
-            />
-            <Card elevation="md" style={styles.insightCardBlock}>
-              <Text style={styles.projectionRateLabel}>
-                {isTr
-                  ? `Günlük hız: ${formatWeight(dailyRate)}/gün · ${weightHistory.length} ölçümden hesaplandı`
-                  : `Daily rate: ${formatWeight(dailyRate)}/day · from ${weightHistory.length} weigh-ins`}
-              </Text>
-
-              <View style={styles.projTotalRow}>
-                <Text style={styles.projTotalValue}>~{formatWeight(projected14)}</Text>
-                <Text style={styles.projTotalLabel}>
-                  {isTr ? 'tahmini 14 günlük değişim' : 'projected 14-day change'}
+        {/* ══════════════════ TALK TO MAYA ══════════════════ */}
+        <AnimatedSection delay={360}>
+          <TouchableOpacity
+            style={styles.mayaEntryCard}
+            onPress={openChat}
+            activeOpacity={0.9}
+            accessibilityRole="button"
+            accessibilityLabel={isTr ? "Maya'yla konuş" : 'Talk to Maya'}
+          >
+            <View style={styles.mayaEntryLeft}>
+              <MayaAvatar size={44} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.mayaEntryTitle}>{isTr ? "Maya'yla konuş" : 'Talk to Maya'}</Text>
+                <Text style={styles.mayaEntrySub}>
+                  {isTr ? 'Protein veya ilerlemen hakkında sor' : 'Ask about protein or your progress'}
                 </Text>
               </View>
-
-              <Text style={styles.projDisclaimer}>
-                {isTr
-                  ? '📋 Bu tahmin son kilo kayıtlarınızdaki hıza dayanır; gerçek sonuçlar protein alımı, egzersiz ve diğer etkenlere göre değişir.'
-                  : '📋 This projection is based on your recent weigh-in rate; actual results vary with protein intake, exercise and other factors.'}
-              </Text>
-            </Card>
-          </>
-        )}
-
-        {/* ── Haftalık Rapor / Weekly Report ── */}
-        <SectionTitle
-          title={isTr ? '📊 Haftalık Rapor' : '📊 Weekly Report'}
-          subtitle={weekRangeLabel}
-          style={styles.insightsSection}
-        />
-
-        {hasWeeklyData ? (
-          <>
-            {/* This-week hero summary */}
-            <GradientHero style={styles.weeklyHero}>
-              <Text style={styles.weeklyHeroTitle}>{isTr ? '📉 Bu Hafta' : '📉 This Week'}</Text>
-              <Text style={styles.weeklyHeroValue}>
-                {weeklyChange > 0 ? '−' : weeklyChange < 0 ? '+' : ''}{formatWeight(weeklyChangeAbs)}
-              </Text>
-              <Text style={styles.weeklyHeroSubtitle}>
-                {weeklyChange > 0
-                  ? (isTr ? 'Bu hafta kaybedildi' : 'Lost this week')
-                  : weeklyChange < 0
-                  ? (isTr ? 'Bu hafta alındı' : 'Gained this week')
-                  : (isTr ? 'Değişim yok' : 'No change this week')}
-              </Text>
-              <View style={styles.weeklyHeroDivider} />
-              <View style={styles.weeklyHeroStatsRow}>
-                <View style={styles.weeklyHeroStat}>
-                  <Text style={styles.weeklyHeroStatValue}>{formatWeight(Math.abs(totalWeightLost))}</Text>
-                  <Text style={styles.weeklyHeroStatLabel}>{isTr ? 'Toplam Kayıp' : 'Total Lost'}</Text>
-                </View>
-                <View style={styles.weeklyHeroStatDivider} />
-                <View style={styles.weeklyHeroStat}>
-                  <Text style={styles.weeklyHeroStatValue}>{avgPctLabel}%</Text>
-                  <Text style={styles.weeklyHeroStatLabel}>{isTr ? 'Ort. Protein' : 'Avg Protein'}</Text>
-                </View>
-              </View>
-            </GradientHero>
-
-            {/* Avg protein ring + muscle grade */}
-            <View style={styles.weeklyGridRow}>
-              <Card style={styles.weeklyGridCard} contentStyle={styles.weeklyGridCardInner}>
-                <Ring
-                  progress={avgPct}
-                  size={104}
-                  strokeWidth={11}
-                  color={avgPct >= 1 ? colors.success : avgPct >= 0.6 ? colors.warning : colors.danger}
-                  trackColor={colors.outlineVariant}
-                >
-                  <Text style={[styles.weeklyRingValue, { color: avgPct >= 1 ? colors.success : avgPct >= 0.6 ? colors.warning : colors.danger }]}>
-                    {avgPctLabel}%
-                  </Text>
-                  <Text style={styles.weeklyRingSub}>{proteinTarget}g</Text>
-                </Ring>
-                <Text style={styles.weeklyGridLabel}>{isTr ? 'Ort. Protein Hedefi' : 'Avg Protein Goal'}</Text>
-              </Card>
-
-              <Card style={styles.weeklyGridCard} contentStyle={styles.weeklyGridCardInner}>
-                <View style={[styles.gradeCircle, { backgroundColor: muscleTonePalette.bg }]}>
-                  <Text style={styles.gradeEmoji}>{muscleProtection.emoji}</Text>
-                </View>
-                <Text style={styles.weeklyGridLabel}>{isTr ? 'Kas Koruması' : 'Muscle Protection'}</Text>
-                <Badge
-                  label={muscleProtection.label(language)}
-                  tone={muscleProtection.toneKey}
-                  style={{ marginTop: spacing.stackSm }}
-                />
-                <Text style={styles.estimateCaptionCentered}>
-                  {notClinicalNote(language)}
-                </Text>
-              </Card>
             </View>
+            <Ionicons name="chevron-forward" size={24} color={colors.primary} />
+          </TouchableOpacity>
+        </AnimatedSection>
 
-            {/* 7-day protein-vs-target bar chart */}
-            <Card elevation="md" style={styles.insightCardBlock}>
-              <View style={styles.proteinChartHeader}>
-                <Text style={styles.proteinChartSubtitle}>
-                  {isTr ? `Hedef: ${proteinTarget}g / gün` : `Target: ${proteinTarget}g / day`}
-                </Text>
-                <View style={styles.proteinChartLegend}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.success }]} />
-                  <Text style={styles.legendText}>{isTr ? 'Hedefe ulaştı' : 'Met'}</Text>
-                  <View style={[styles.legendDot, { backgroundColor: colors.warning, marginLeft: 10 }]} />
-                  <Text style={styles.legendText}>{isTr ? 'Kısmen' : 'Partial'}</Text>
-                  <View style={[styles.legendDot, { backgroundColor: colors.danger, marginLeft: 10 }]} />
-                  <Text style={styles.legendText}>{isTr ? 'Düşük' : 'Low'}</Text>
+        {/* ══════════════════ MORE DETAILS (collapsible) ══════════════════ */}
+        <AnimatedSection delay={420}>
+          <TouchableOpacity
+            style={styles.moreToggle}
+            onPress={() => setShowMoreInsights((v) => !v)}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showMoreInsights }}
+            accessibilityLabel={
+              showMoreInsights
+                ? (isTr ? 'Detayları gizle' : 'Hide details')
+                : (isTr ? 'Daha fazla detay göster' : 'Show more details')
+            }
+          >
+            <Text style={styles.moreToggleText}>
+              {showMoreInsights
+                ? (isTr ? 'Detayları gizle' : 'Hide details')
+                : (isTr ? 'Kalori, egzersiz ve daha fazlası' : 'Calories, exercise & more')}
+            </Text>
+            <Ionicons
+              name={showMoreInsights ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.primary}
+            />
+          </TouchableOpacity>
+        </AnimatedSection>
+
+        {showMoreInsights && (
+          <View>
+            {/* Apple Watch / HealthKit Card (iOS only, when available) */}
+            {healthAvailable && (
+              <Card elevation="md" style={styles.detailCard}>
+                <View style={styles.watchHeaderRow}>
+                  <Text style={styles.detailTitle}>
+                    {isTr ? '⌚ Apple Watch & Sağlık' : '⌚ Apple Watch & Health'}
+                  </Text>
+                  {healthAuthorized && (
+                    <TouchableOpacity
+                      onPress={refreshHealthData}
+                      disabled={healthLoading}
+                      style={styles.watchRefreshBtn}
+                      accessibilityRole="button"
+                      accessibilityLabel={isTr ? 'Sağlık verisini yenile' : 'Refresh health data'}
+                    >
+                      {healthLoading
+                        ? <ActivityIndicator size="small" color={colors.primary} />
+                        : <Text style={styles.watchRefreshText}>{isTr ? '↻ Yenile' : '↻ Refresh'}</Text>}
+                    </TouchableOpacity>
+                  )}
                 </View>
-              </View>
-              {dailyProtein.map((day, i) => {
-                const pct = Math.min(day.ratio, 1);
-                const barColor = pct >= 1 ? colors.success : pct >= 0.6 ? colors.warning : colors.danger;
-                const bgColor = pct >= 1 ? colors.successBg : pct >= 0.6 ? colors.warningBg : colors.dangerBg;
-                return (
-                  <View key={i} style={[styles.proteinDayRow, i < dailyProtein.length - 1 && styles.proteinDayBorder]}>
-                    <Text style={styles.proteinDayName}>{day.dayName}</Text>
-                    <View style={styles.proteinBarContainer}>
-                      <View style={styles.proteinBarBg}>
-                        <View style={[styles.proteinBarFill, { width: day.hasData ? `${Math.round(pct * 100)}%` : '0%', backgroundColor: barColor }]} />
-                        <View style={styles.proteinBarTargetLine} />
-                      </View>
-                    </View>
-                    <View style={[styles.proteinGramsBadge, { backgroundColor: bgColor }]}>
-                      <Text style={[styles.proteinGramsText, { color: barColor }]}>
-                        {day.hasData ? `${day.grams}g` : '—'}
+
+                {!healthAuthorized ? (
+                  <>
+                    <Text style={styles.watchConnectNote}>
+                      {isTr
+                        ? 'Apple Watch ile yakılan gerçek aktif kaloriyi ve nabzını otomatik takip et.'
+                        : 'Sync your real active calories and heart rate from Apple Watch automatically.'}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.watchConnectBtn, healthLoading && { opacity: 0.6 }]}
+                      onPress={connectAppleWatch}
+                      disabled={healthLoading}
+                      activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityLabel={isTr ? 'Apple Watch\'a bağlan' : 'Connect Apple Watch'}
+                    >
+                      {healthLoading
+                        ? <ActivityIndicator color={colors.white} size="small" />
+                        : <Text style={styles.watchConnectBtnText}>🔥⌚ {isTr ? 'Apple Watch\'a Bağlan' : 'Connect Apple Watch'}</Text>}
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <View style={styles.watchStatsRow}>
+                    <View style={styles.watchStatItem}>
+                      <Text style={styles.watchStatValue}>
+                        {watchActiveEnergy != null ? watchActiveEnergy : '—'}
+                      </Text>
+                      <Text style={styles.watchStatLabel}>
+                        {isTr ? '🔥 Aktif kcal' : '🔥 Active kcal'}
                       </Text>
                     </View>
-                    <Text style={[styles.proteinPctLabel, { color: barColor }]}>
-                      {day.hasData ? `${Math.round(pct * 100)}%` : ''}
-                    </Text>
+                    <View style={styles.watchStatDivider} />
+                    <View style={styles.watchStatItem}>
+                      <Text style={styles.watchStatValue}>
+                        {latestHeartRate != null ? latestHeartRate : '—'}
+                      </Text>
+                      <Text style={styles.watchStatLabel}>
+                        {isTr ? '❤️ Nabız (bpm)' : '❤️ Heart rate (bpm)'}
+                      </Text>
+                    </View>
+                    <View style={styles.watchStatDivider} />
+                    <View style={styles.watchStatItem}>
+                      <Text style={styles.watchStatValue}>
+                        {restingHeartRate != null ? restingHeartRate : '—'}
+                      </Text>
+                      <Text style={styles.watchStatLabel}>
+                        {isTr ? '🫀 Dinlenme (bpm)' : '🫀 Resting (bpm)'}
+                      </Text>
+                    </View>
                   </View>
-                );
-              })}
+                )}
+              </Card>
+            )}
+
+            {/* Calorie Balance Card */}
+            <Card elevation="md" style={styles.detailCard}>
+              <Text style={styles.detailTitle}>{isTr ? '⚖️ Günlük Kalori Dengesi' : '⚖️ Daily Calorie Balance'}</Text>
+              <View style={styles.balanceRow}>
+                <View style={styles.balanceItem}>
+                  <Text style={styles.balanceValue}>{totalCalories > 0 ? totalCalories : '—'}</Text>
+                  <Text style={styles.balanceLabel}>{isTr ? '🍽️ Yenen' : '🍽️ Eaten'}</Text>
+                </View>
+                <Text style={styles.balanceMinus}>−</Text>
+                <View style={styles.balanceItem}>
+                  <Text style={styles.balanceValue}>{bmr}</Text>
+                  <Text style={styles.balanceLabel}>{isTr ? '🔥 BMR' : '🔥 BMR'}</Text>
+                </View>
+                <Text style={styles.balanceMinus}>−</Text>
+                <View style={styles.balanceItem}>
+                  <Text style={[styles.balanceValue, usingWatchEnergy && { color: colors.success }]}>
+                    {activeCalories > 0 ? activeCalories : '—'}
+                  </Text>
+                  <Text style={[styles.balanceLabel, usingWatchEnergy && { color: colors.success }]}>
+                    {usingWatchEnergy
+                      ? '🔥⌚ Apple Watch'
+                      : (isTr ? '🏋️ Spor' : '🏋️ Exercise')}
+                  </Text>
+                </View>
+                <Text style={styles.balanceMinus}>=</Text>
+                <View style={[styles.balanceItem, styles.balanceResult, { borderColor: balanceColor }]}>
+                  <Text style={[styles.balanceResultValue, { color: balanceColor }]}>
+                    {calBalance === null ? '—' : (calBalance > 0 ? `+${calBalance}` : `${calBalance}`)}
+                  </Text>
+                  <Text style={[styles.balanceLabel, { color: balanceColor }]}>kcal</Text>
+                </View>
+              </View>
+              {calBalance !== null && (
+                <Text style={[styles.balanceNote, { color: balanceColor }]}>
+                  {calBalance > 0
+                    ? (isTr ? `${balanceIcon} Kalori fazlası — daha az ye veya daha fazla hareket et` : `${balanceIcon} Calorie surplus — eat less or move more`)
+                    : (isTr ? `${balanceIcon} Kalori açığı — kas koruyarak yağ yakıyorsun` : `${balanceIcon} Calorie deficit — burning fat while preserving muscle`)}
+                </Text>
+              )}
+              <Text style={styles.balanceBmrNote}>
+                {isTr ? `BMR ${userWeight}kg ${userGender === 'male' ? '(erkek)' : userGender === 'female' ? '(kadın)' : ''} baz alınarak hesaplandı` : `BMR calculated using ${userWeight}kg ${userGender === 'male' ? '(male)' : userGender === 'female' ? '(female)' : ''}`}
+              </Text>
+              {usingWatchEnergy && (
+                <Text style={[styles.balanceBmrNote, { color: colors.success, marginTop: 2 }]}>
+                  {isTr
+                    ? '🔥⌚ Aktif kalori Apple Watch\'tan alındı (manuel tahmin yerine)'
+                    : '🔥⌚ Active calories from Apple Watch (instead of manual estimate)'}
+                </Text>
+              )}
             </Card>
 
-            {/* AI insight cards */}
-            <SectionTitle
-              title={`🤖 ${isTr ? 'Öneriler' : 'Recommendations'}`}
-              subtitle={isTr ? 'Verilerinize göre üretildi' : 'Generated from your data'}
-              style={styles.insightsSection}
-            />
-            {recommendations.map((rec, i) => (
-              <Card key={i} style={styles.aiInsightCard} contentStyle={styles.aiInsightInner} elevation="sm">
-                <View style={styles.aiInsightBullet}>
-                  <Text style={styles.aiInsightBulletText}>{i + 1}</Text>
-                </View>
-                <Text style={styles.aiInsightText}>{rec}</Text>
+            {/* Today's Exercises */}
+            <View style={styles.mealsSectionHeader}>
+              <Text style={styles.sectionHeading}>{isTr ? '🏋️ Bugünkü Egzersizler' : '🏋️ Today\'s Exercises'}</Text>
+              {exercises.length > 0 && (
+                <Text style={styles.mealsKcal}>
+                  🔥 {exercises.reduce((s, e) => s + (e.caloriesBurned || 0), 0)} kcal
+                </Text>
+              )}
+            </View>
+            {exercises.length === 0 ? (
+              <Card elevation="sm" style={styles.emptyCard} contentStyle={styles.emptyCardContent}>
+                <Text style={styles.emptyEmoji}>🏃</Text>
+                <Text style={styles.emptyText}>{isTr ? 'Henüz egzersiz eklenmedi' : 'No exercises logged yet'}</Text>
               </Card>
-            ))}
+            ) : (
+              <View style={styles.mealsList}>
+                {exercises.map((ex, index) => {
+                  const exName = EXERCISE_TYPES.find(e => e.id === ex.type)?.[isTr ? 'tr' : 'en'] || ex.name;
+                  return (
+                    <View key={ex.timestamp || String(index)} style={styles.mealRow}>
+                      <View style={styles.mealThumbEmoji}>
+                        <Text style={styles.mealThumbEmojiText}>{ex.emoji}</Text>
+                      </View>
+                      <View style={styles.mealInfo}>
+                        <Text style={styles.mealName} numberOfLines={1}>{exName}</Text>
+                        <Text style={styles.mealTime}>
+                          {ex.duration} min · {isTr ? (ex.intensity === 'light' ? 'Hafif' : ex.intensity === 'moderate' ? 'Orta' : 'Yoğun') : ex.intensity}
+                          {ex.weightUsed ? ` · ${ex.weightUsed} kg` : ''}
+                        </Text>
+                      </View>
+                      <Text style={[styles.mealKcal, { color: colors.success, fontFamily: fontFamily.headingBold }]}>{ex.caloriesBurned} kcal</Text>
+                      <TouchableOpacity
+                        style={styles.mealDelete}
+                        onPress={() => openEditExercise(index)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${isTr ? 'Egzersizi düzenle' : 'Edit exercise'}: ${exName}`}
+                      >
+                        <Ionicons name="create-outline" size={18} color={colors.outline} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.mealDelete}
+                        onPress={() => handleDeleteExercise(index)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${isTr ? 'Egzersizi sil' : 'Delete exercise'}: ${exName}`}
+                      >
+                        <Ionicons name="trash-outline" size={18} color={colors.outline} />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
 
-            <Text style={styles.weeklyDisclaimer}>
-              {isTr
-                ? '📋 Bu özet protein alımı ve kilo kayıtlarınızdan üretilir; klinik bir ölçüm değildir. Bu uygulama tıbbi tavsiye vermez.'
-                : '📋 This summary is generated from your protein intake and weigh-ins; it is not a clinical measurement. This app does not provide medical advice.'}
-            </Text>
-          </>
-        ) : (
-          <Card elevation="sm" style={styles.insightCardBlock} contentStyle={styles.emptyCardContent}>
-            <Text style={styles.emptyEmoji}>📊</Text>
-            <Text style={styles.emptyText}>
-              {currentWeight != null
-                ? isTr
-                  ? `Şu anki kilon: ${formatWeight(currentWeight)}.\nHaftalık değişimi görmek için 2 farklı günde kilo gir. (Aynı gün birden çok giriş tek kayıt sayılır.)`
-                  : `Current weight: ${formatWeight(currentWeight)}.\nWeigh in on 2 different days to see your weekly change. (Multiple entries on the same day count as one.)`
-                : isTr
-                  ? 'Haftalık rapor için 2 farklı günde kilo girmen gerekiyor.'
-                  : 'Weigh in on 2 different days to see your weekly report.'}
-            </Text>
-          </Card>
+            {/* Sustainability Score */}
+            <Card elevation="md" style={[styles.detailCard, { backgroundColor: reboundInfo.bg }]}>
+              <View style={styles.riskCardRow}>
+                <Text style={styles.riskCardEmoji}>{reboundInfo.emoji}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.riskCardLabel, { color: reboundInfo.color }]}>{reboundInfo.label}</Text>
+                  <Text style={styles.riskCardDesc}>{reboundInfo.desc}</Text>
+                </View>
+              </View>
+              {riskData.factors.length > 0 && (
+                <View style={styles.riskFactors}>
+                  <Text style={styles.riskFactorsTitle}>{isTr ? 'Risk faktörleri:' : 'Risk factors:'}</Text>
+                  {riskData.factors.map((f, i) => (
+                    <Text key={i} style={styles.riskFactor}>✗ {f}</Text>
+                  ))}
+                </View>
+              )}
+            </Card>
+
+            {/* 14-Day Projection */}
+            {showProjection && (
+              <Card elevation="md" style={styles.detailCard}>
+                <Text style={styles.detailTitle}>{isTr ? '📈 14 Günlük Projeksiyon' : '📈 14-Day Projection'}</Text>
+                <Text style={styles.projectionRateLabel}>
+                  {isTr
+                    ? `Günlük hız: ${formatWeight(dailyRate)}/gün · ${weightHistory.length} ölçümden hesaplandı`
+                    : `Daily rate: ${formatWeight(dailyRate)}/day · from ${weightHistory.length} weigh-ins`}
+                </Text>
+                <View style={styles.projTotalRow}>
+                  <Text style={styles.projTotalValue}>~{formatWeight(projected14)}</Text>
+                  <Text style={styles.projTotalLabel}>
+                    {isTr ? 'tahmini 14 günlük değişim' : 'projected 14-day change'}
+                  </Text>
+                </View>
+                <Text style={styles.projDisclaimer}>
+                  {isTr
+                    ? '📋 Bu tahmin son kilo kayıtlarınızdaki hıza dayanır; gerçek sonuçlar protein alımı, egzersiz ve diğer etkenlere göre değişir.'
+                    : '📋 This projection is based on your recent weigh-in rate; actual results vary with protein intake, exercise and other factors.'}
+                </Text>
+              </Card>
+            )}
+
+            {/* Recommendations (full list, generated from real data) */}
+            {hasWeeklyData && (
+              <>
+                <View style={[styles.mealsSectionHeader, { marginTop: spacing.stackSm }]}>
+                  <Text style={styles.sectionHeading}>{`🤖 ${isTr ? 'Öneriler' : 'Recommendations'}`}</Text>
+                </View>
+                {recommendations.map((rec, i) => (
+                  <Card key={i} style={styles.aiInsightCard} contentStyle={styles.aiInsightInner} elevation="sm">
+                    <View style={styles.aiInsightBullet}>
+                      <Text style={styles.aiInsightBulletText}>{i + 1}</Text>
+                    </View>
+                    <Text style={styles.aiInsightText}>{rec}</Text>
+                  </Card>
+                ))}
+                <Text style={styles.weeklyDisclaimer}>
+                  {isTr
+                    ? '📋 Bu özet protein alımı ve kilo kayıtlarınızdan üretilir; klinik bir ölçüm değildir. Bu uygulama tıbbi tavsiye vermez.'
+                    : '📋 This summary is generated from your protein intake and weigh-ins; it is not a clinical measurement. This app does not provide medical advice.'}
+                </Text>
+              </>
+            )}
+          </View>
         )}
 
         <View style={{ height: 96 }} />
