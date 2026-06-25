@@ -17,6 +17,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useAuth } from '../context/AuthContext';
@@ -249,7 +250,7 @@ export default function DashboardScreen({ navigation }) {
   const { colors, semantic, shadow } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors, semantic, shadow), [colors, semantic, shadow]);
   const { formatWeight, formatHeight, toDisplayWeight, weightUnit, parseWeightToKg, weightRange, weightPlaceholder, weightLabel } = useUnit();
-  const { completeMission, earnXP } = useGamification();
+  const { completeMission, earnXP, streak } = useGamification();
 
   const [refreshing, setRefreshing] = useState(false);
   const [showTour, setShowTour] = useState(false);
@@ -787,6 +788,51 @@ export default function DashboardScreen({ navigation }) {
     }
   }
 
+  // Safe navigation helper — never crash if a route isn't registered in a build.
+  function safeNavigate(route, fallback) {
+    try {
+      navigation.navigate(route);
+    } catch {
+      if (fallback) {
+        try { navigation.navigate(fallback); } catch {}
+      }
+    }
+  }
+
+  // ── Derived data for the redesigned home (real values only) ──
+  const firstName = (displayName || '').split(' ')[0] || displayName;
+  const proteinPctInt = Math.round(proteinProgressPct * 100);
+
+  // Welcome subtitle derived from real protein progress.
+  const welcomeSubtitle = proteinMet
+    ? (isTr
+        ? 'Harika gidiyorsun! Bugün protein hedefine ulaştın.'
+        : "You're doing great! You've hit your protein goal today.")
+    : (isTr
+        ? `Protein hedefinin %${proteinPctInt}'ine ulaştın.`
+        : `You've hit ${proteinPctInt}% of your protein goal today.`);
+
+  // Weight delta vs the previous logged entry (real weightHistory), in display unit.
+  const prevWeight =
+    weightHistory.length >= 2 ? weightHistory[weightHistory.length - 2].weight : null;
+  const weightDeltaKg =
+    currentWeight != null && prevWeight != null
+      ? parseFloat((currentWeight - prevWeight).toFixed(1))
+      : null;
+
+  // Mini sparkline — last few logged weights as relative bar heights.
+  const sparkPoints = chartWeightData.map((e) => e.weight).filter((w) => w != null);
+  const sparkMin = sparkPoints.length ? Math.min(...sparkPoints) : 0;
+  const sparkMax = sparkPoints.length ? Math.max(...sparkPoints) : 1;
+  const sparkRange = sparkMax - sparkMin || 1;
+
+  // Today's food calories (real — summed from analyzed meals).
+  const todayFoodCalories = todayMeals.reduce((sum, m) => sum + (m.calories || 0), 0);
+  const activeEnergy =
+    healthData && typeof healthData.activeEnergy === 'number'
+      ? Math.round(healthData.activeEnergy)
+      : null;
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <FeatureTour
@@ -794,6 +840,26 @@ export default function DashboardScreen({ navigation }) {
         language={language}
         onFinish={() => setShowTour(false)}
       />
+      {/* ── Top app bar ── */}
+      <View style={styles.appBar}>
+        <View style={styles.appBarLeft}>
+          <View style={styles.appBarAvatar} accessibilityElementsHidden importantForAccessibility="no">
+            <Text style={styles.appBarAvatarText}>
+              {(firstName || 'U').charAt(0).toUpperCase()}
+            </Text>
+          </View>
+          <Text style={styles.appBarTitle}>GLP-1 Coach</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.appBarBell}
+          onPress={() => safeNavigate('Rewards', 'Settings')}
+          accessibilityRole="button"
+          accessibilityLabel={isTr ? 'Bildirimler ve ödüller' : 'Notifications and rewards'}
+        >
+          <Ionicons name="notifications-outline" size={24} color={colors.onSurfaceVariant} />
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -802,87 +868,184 @@ export default function DashboardScreen({ navigation }) {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
-        {/* Medical disclaimer banner */}
-        <View style={styles.medDisclaimer}>
-          <Text style={styles.medDisclaimerText}>
-            {isTr
-              ? 'ℹ️ Bu uygulama yaşam tarzı desteği sağlar. Tıbbi tavsiye vermez. Sağlık kararları için doktorunuza danışın.'
-              : 'ℹ️ This app provides lifestyle support only, not medical advice. Consult your doctor for health decisions.'}
+        {/* ── Welcome header ── */}
+        <View style={styles.welcome}>
+          <Text style={styles.welcomeTitle}>
+            {greeting}, {firstName}.
           </Text>
+          <Text style={styles.welcomeSubtitle}>{welcomeSubtitle}</Text>
         </View>
 
-        {/* ── Hero Card ── */}
+        {/* ── Hero Card — Protein progress ring ── */}
         <GradientHero style={styles.heroCard} padding={spacing.stackLg}>
-          <Text style={styles.heroGreeting}>
-            {greeting}, {displayName} 👋
-          </Text>
+          <View style={styles.heroRow}>
+            <Ring
+              progress={proteinProgressPct}
+              size={132}
+              strokeWidth={10}
+              color={colors.white}
+              trackColor="rgba(255,255,255,0.18)"
+            >
+              <Text style={styles.heroRingValue}>{analyzedTodayProtein}g</Text>
+              <Text style={styles.heroRingMax}>
+                {isTr ? `/ ${proteinTarget}g` : `of ${proteinTarget}g`}
+              </Text>
+            </Ring>
+            <View style={styles.heroInfo}>
+              <Text style={styles.heroFocusTitle}>
+                {isTr ? 'Protein Odağı' : 'Protein Focus'}
+              </Text>
+              <Text style={styles.heroFocusDesc}>
+                {isTr
+                  ? 'Protein, yağ kaybederken kas kütleni korumana yardımcı olur.'
+                  : 'Protein helps protect your muscle mass while you lose fat.'}
+              </Text>
+              <View style={styles.heroChips}>
+                <View style={styles.heroChip}>
+                  <Text style={styles.heroChipText}>
+                    {proteinMet
+                      ? (isTr ? 'Tamamlandı' : 'Goal met')
+                      : (isTr ? 'Yolundasın' : 'On track')}
+                  </Text>
+                </View>
+                {streak > 0 && (
+                  <View style={styles.heroChip}>
+                    <Text style={styles.heroChipText}>
+                      {isTr ? `${streak} günlük seri` : `${streak}-day streak`}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          </View>
+        </GradientHero>
+
+        {/* ── Bento stat grid ── */}
+        <View style={styles.bentoRow}>
+          {/* Weight */}
           <TouchableOpacity
-            onPress={() => navigation.navigate('Weight')}
-            activeOpacity={0.8}
+            style={[styles.bentoCard, styles.bentoHalf]}
+            activeOpacity={0.85}
+            onPress={() => safeNavigate('Weight')}
             accessibilityRole="button"
             accessibilityLabel={
               currentWeight != null
                 ? (isTr
-                    ? `Mevcut kilo ${formatWeight(currentWeight)}. Kilo geçmişi ve grafiği aç.`
-                    : `Current weight ${formatWeight(currentWeight)}. Open weight history and chart.`)
-                : (isTr ? 'Kilo geçmişi ve grafiği aç' : 'Open weight history and chart')
+                    ? `Kilo ${formatWeight(currentWeight)}. Kilo geçmişini aç.`
+                    : `Weight ${formatWeight(currentWeight)}. Open weight history.`)
+                : (isTr ? 'Kilo geçmişini aç' : 'Open weight history')
             }
           >
+            <View style={styles.bentoLabelRow}>
+              <Ionicons name="trending-down-outline" size={16} color={colors.primary} />
+              <Text style={styles.bentoLabel}>{isTr ? 'Kilo' : 'Weight'}</Text>
+            </View>
             {currentWeight != null ? (
-              <Text style={styles.heroWeight}>{formatWeight(currentWeight)}</Text>
+              <View style={styles.bentoValueRow}>
+                <Text style={styles.bentoValue}>{toDisplayWeight(currentWeight)}</Text>
+                {weightDeltaKg != null && weightDeltaKg !== 0 && (
+                  <Text
+                    style={[
+                      styles.bentoDelta,
+                      { color: weightDeltaKg < 0 ? colors.success : colors.danger },
+                    ]}
+                  >
+                    {weightDeltaKg < 0 ? '' : '+'}
+                    {formatWeight(weightDeltaKg)}
+                  </Text>
+                )}
+              </View>
             ) : (
-              <Text style={styles.heroWeightEmpty}>
-                {isTr ? 'Henüz kilo girilmedi' : 'No weight logged yet'}
-              </Text>
+              <Text style={styles.bentoEmpty}>{isTr ? 'Kilo ekle' : 'Add weight'}</Text>
             )}
-            <Text style={{ ...typography.labelSm, fontFamily: fontFamily.bodyMedium, color: 'rgba(255,255,255,0.85)', marginTop: 2 }}>
-              {isTr ? 'Kilo geçmişi & grafik ›' : 'Weight history & chart ›'}
-            </Text>
+            <View style={styles.spark}>
+              {(sparkPoints.length > 0
+                ? sparkPoints
+                : [0.5, 0.7, 0.6, 0.8, 1]
+              ).map((w, i, arr) => {
+                const h =
+                  sparkPoints.length > 0
+                    ? 0.3 + 0.7 * ((w - sparkMin) / sparkRange)
+                    : w;
+                const isLast = i === arr.length - 1;
+                return (
+                  <View
+                    key={i}
+                    style={[
+                      styles.sparkBar,
+                      { height: `${Math.round(h * 100)}%` },
+                      isLast && styles.sparkBarLast,
+                    ]}
+                  />
+                );
+              })}
+            </View>
           </TouchableOpacity>
 
-          {dailyRate !== 0 && (
-            <View
-              style={[
-                styles.heroPill,
-                {
-                  backgroundColor: dailyRate > 0 ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)',
-                  borderColor: dailyRate > 0 ? 'rgba(16,185,129,0.4)' : 'rgba(239,68,68,0.4)',
-                },
-              ]}
-            >
-              <Text style={[styles.heroPillText, { color: dailyRate > 0 ? '#6EE7B7' : '#FCA5A5' }]}>
-                {dailyRate > 0
-                  ? `▼ ${formatWeight(dailyRate)}/${isTr ? 'gün' : 'day'}`
-                  : `▲ ${formatWeight(Math.abs(dailyRate))}/${isTr ? 'gün' : 'day'}`}
+          {/* Streak */}
+          <View style={[styles.bentoCard, styles.bentoHalf]}>
+            <View style={styles.bentoLabelRow}>
+              <Ionicons name="flame" size={16} color={colors.warning} />
+              <Text style={styles.bentoLabel}>{isTr ? 'Seri' : 'Streak'}</Text>
+            </View>
+            <Text style={styles.bentoValue}>
+              {streak}
+              <Text style={styles.bentoValueUnit}> {isTr ? 'gün' : 'days'}</Text>
+            </Text>
+            <Text style={styles.bentoSub}>
+              {streak > 0
+                ? (isTr ? 'İstikrar her şeydir!' : 'Consistency is key!')
+                : (isTr ? 'Bugün başla 💪' : 'Start today 💪')}
+            </Text>
+          </View>
+        </View>
+
+        {/* Calories (full-width) */}
+        <View style={[styles.bentoCard, styles.bentoFull]}>
+          <View style={styles.bentoLabelRow}>
+            <Ionicons name="restaurant-outline" size={16} color={colors.danger} />
+            <Text style={styles.bentoLabel}>{isTr ? 'Kalori' : 'Calories'}</Text>
+          </View>
+          <View style={styles.caloriesRow}>
+            <View>
+              <Text style={styles.bentoValue}>
+                {todayFoodCalories.toLocaleString()}
+                <Text style={styles.bentoValueUnit}> kcal</Text>
+              </Text>
+              <Text style={styles.bentoSub}>
+                {activeEnergy != null
+                  ? (isTr
+                      ? `Yakılan: ${activeEnergy} kcal`
+                      : `Burned: ${activeEnergy} kcal`)
+                  : (isTr ? 'Bugün alınan' : 'Eaten today')}
               </Text>
             </View>
-          )}
-
-          <View style={styles.heroActions}>
-            <TouchableOpacity
-              style={styles.heroActionBtn}
-              onPress={openCoachChat}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel={isTr ? 'Maya ile sohbet et' : 'Chat with Maya'}
-            >
-              <MayaAvatar size={26} style={{ marginBottom: 4 }} />
-              <Text style={styles.heroActionText}>Maya</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.heroActionBtn, styles.heroActionBtnSolid]}
-              onPress={() => setLogWeightVisible(true)}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel={isTr ? 'Kilo ekle' : 'Log weight'}
-            >
-              <Text style={styles.heroActionEmoji} accessibilityElementsHidden importantForAccessibility="no">＋</Text>
-              <Text style={[styles.heroActionText, styles.heroActionTextSolid]}>
-                {isTr ? 'Kilo Ekle' : 'Log Weight'}
-              </Text>
-            </TouchableOpacity>
           </View>
-        </GradientHero>
+        </View>
+
+        {/* ── Talk to Maya ── */}
+        <TouchableOpacity
+          style={styles.mayaCard}
+          onPress={openCoachChat}
+          activeOpacity={0.9}
+          accessibilityRole="button"
+          accessibilityLabel={isTr ? 'Maya ile sohbet et' : 'Talk to Maya'}
+        >
+          <View style={styles.mayaLeft}>
+            <MayaAvatar size={48} />
+            <View style={styles.mayaTextCol}>
+              <Text style={styles.mayaTitle}>
+                {isTr ? "Maya'yla konuş" : 'Talk to Maya'}
+              </Text>
+              <Text style={styles.mayaSub}>
+                {isTr
+                  ? 'Protein veya ilerlemen hakkında sor'
+                  : 'Ask about protein or your progress'}
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={26} color={colors.primary} />
+        </TouchableOpacity>
 
         {/* ── Compact Next Injection Card (only when actively using medication) ── */}
         {medLoaded && medActive && (
@@ -946,83 +1109,98 @@ export default function DashboardScreen({ navigation }) {
           );
         })()}
 
-        {/* ── Simple Daily Protein Goal Card ── */}
-        <Card style={styles.proteinCard}>
-          <View style={styles.proteinHeader}>
-            <Text style={styles.proteinTitle}>
-              {isTr ? 'Günlük Protein Hedefi' : 'Daily Protein Goal'}
-            </Text>
-            <Badge
-              label={proteinMet ? (isTr ? 'Tamam' : 'Met') : `${analyzedTodayProtein} / ${proteinTarget}g`}
-              tone={proteinMet ? 'success' : 'info'}
-            />
-          </View>
-
-          <View style={styles.proteinBody}>
-            <Ring
-              progress={proteinProgressPct}
-              size={96}
-              strokeWidth={10}
-              color={proteinMet ? colors.success : colors.primary}
-            >
-              <Text
-                style={[
-                  styles.proteinRingValue,
-                  { color: proteinMet ? colors.success : colors.primary },
-                ]}
-              >
-                {Math.round(proteinProgressPct * 100)}%
-              </Text>
-            </Ring>
-            <View style={styles.proteinInfo}>
-              <Text style={styles.proteinBig}>
-                {analyzedTodayProtein}
-                <Text style={styles.proteinUnit}> / {proteinTarget}g</Text>
-              </Text>
-              <Text style={styles.proteinRemaining}>
-                {proteinMet
-                  ? (isTr ? 'Bugünkü hedefine ulaştın 🎯' : "Today's goal reached 🎯")
-                  : isTr
-                  ? `Hedefe ${remainingProtein}g kaldı`
-                  : `${remainingProtein}g to go`}
-              </Text>
-            </View>
-          </View>
-
-          <ProgressBar
-            progress={proteinProgressPct}
-            color={proteinMet ? colors.success : colors.primary}
-            height={8}
-            style={styles.proteinBar}
-          />
-        </Card>
-
         {/* ── Muscle protection insight (qualitative trend, audit #10) ── */}
         {(() => {
           const tone =
             semantic[muscleAssessment.toneKey] || semantic.info; // 'primary' → info
+          const isProtected =
+            muscleAssessment.toneKey === 'success';
+          const accent = isProtected ? colors.success : tone.fg;
           return (
-            <Card style={styles.muscleCard}>
+            <Card
+              style={[
+                styles.muscleCard,
+                { backgroundColor: isProtected ? colors.successBg : colors.surface },
+              ]}
+            >
               <View style={styles.muscleHeader}>
-                <Text style={styles.muscleEmoji}>{muscleAssessment.emoji}</Text>
+                <View
+                  style={[
+                    styles.muscleShield,
+                    { backgroundColor: isProtected ? 'rgba(22,163,74,0.18)' : colors.surfaceVariant },
+                  ]}
+                >
+                  <Ionicons name="shield-checkmark" size={26} color={accent} />
+                </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.muscleLabel, { color: tone.fg }]}>
+                  <Text style={[styles.muscleLabel, { color: accent }]}>
                     {muscleAssessment.label(language)}
                   </Text>
                   <Text style={styles.muscleDesc}>
                     {muscleAssessment.description(language)}
                   </Text>
+                  <Text style={styles.muscleNotClinical}>
+                    {muscleAssessment.notClinical(language)}
+                  </Text>
                 </View>
               </View>
-              <Text style={styles.muscleNotClinical}>
-                {muscleAssessment.notClinical(language)}
-              </Text>
             </Card>
           );
         })()}
 
         {/* Health-guidance disclaimer, bound near the muscle/health insight. */}
         <MedicalDisclaimer variant="medical" style={styles.muscleDisclaimer} />
+
+        {/* ── Quick Add row ── */}
+        <View style={styles.quickAddSection}>
+          <Text style={styles.quickAddHeading}>{isTr ? 'HIZLI EKLE' : 'QUICK ADD'}</Text>
+          <View style={styles.quickAddRow}>
+            {[
+              {
+                key: 'meal',
+                icon: 'add',
+                label: isTr ? 'Öğün' : 'Meal',
+                onPress: () => safeNavigate('MealAnalysis'),
+                a11y: isTr ? 'Öğün ekle' : 'Add meal',
+              },
+              {
+                key: 'weight',
+                icon: 'scale-outline',
+                label: isTr ? 'Kilo' : 'Weight',
+                onPress: openLogWeight,
+                a11y: isTr ? 'Kilo ekle' : 'Add weight',
+              },
+              {
+                key: 'meds',
+                icon: 'medical-outline',
+                label: isTr ? 'İlaç' : 'Meds',
+                onPress: goToMedication,
+                a11y: isTr ? 'İlaç takibi' : 'Medication',
+              },
+              {
+                key: 'activity',
+                icon: 'fitness-outline',
+                label: isTr ? 'Aktivite' : 'Activity',
+                onPress: () => safeNavigate('HealthLog'),
+                a11y: isTr ? 'Aktivite kaydet' : 'Log activity',
+              },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.key}
+                style={styles.quickAddItem}
+                onPress={item.onPress}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={item.a11y}
+              >
+                <View style={styles.quickAddCircle}>
+                  <Ionicons name={item.icon} size={24} color={colors.primary} />
+                </View>
+                <Text style={styles.quickAddLabel}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
 
         {/* ── Coach Message ── (always available) */}
         <CoachMessage message={coachMsg} />
@@ -1230,7 +1408,243 @@ function SectionTitle({ title }) {
 const makeStyles = (colors, semantic, shadow) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   scroll: { flex: 1 },
-  content: { padding: spacing.containerMargin, paddingTop: spacing.gutter },
+  content: { padding: spacing.containerMargin, paddingTop: spacing.stackMd },
+
+  // ── Top app bar ──
+  appBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.containerMargin,
+    paddingVertical: 10,
+  },
+  appBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  appBarAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appBarAvatarText: {
+    color: colors.onPrimary,
+    fontFamily: fontFamily.bodyBold,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  appBarTitle: {
+    fontSize: 20,
+    lineHeight: 26,
+    fontFamily: fontFamily.headingBold,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  appBarBell: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Welcome header ──
+  welcome: { marginBottom: spacing.stackLg },
+  welcomeTitle: {
+    fontSize: 26,
+    lineHeight: 32,
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    color: colors.onSurface,
+    letterSpacing: -0.3,
+  },
+  welcomeSubtitle: {
+    ...typography.bodyMd,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.onSurfaceVariant,
+    marginTop: 4,
+  },
+
+  // ── Hero (protein ring) ──
+  heroRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.stackLg },
+  heroRingValue: {
+    color: colors.white,
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    fontSize: 26,
+    lineHeight: 30,
+  },
+  heroRingMax: {
+    color: 'rgba(255,255,255,0.75)',
+    fontFamily: fontFamily.bodyMedium,
+    fontWeight: '500',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  heroInfo: { flex: 1 },
+  heroFocusTitle: {
+    color: colors.white,
+    fontFamily: fontFamily.headingBold,
+    fontWeight: '700',
+    fontSize: 20,
+    lineHeight: 26,
+  },
+  heroFocusDesc: {
+    color: 'rgba(255,255,255,0.85)',
+    fontFamily: fontFamily.body,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 4,
+  },
+  heroChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  heroChip: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: radii.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  heroChipText: {
+    color: colors.white,
+    fontFamily: fontFamily.bodySemiBold,
+    fontWeight: '600',
+    fontSize: 11,
+  },
+
+  // ── Bento stat grid ──
+  bentoRow: { flexDirection: 'row', gap: 12, marginTop: spacing.stackLg },
+  bentoCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    padding: 16,
+    ...shadow('md'),
+  },
+  bentoHalf: { flex: 1, minHeight: 132, justifyContent: 'space-between' },
+  bentoFull: { marginTop: 12 },
+  bentoLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  bentoLabel: {
+    ...typography.labelSm,
+    color: colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  bentoValueRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 6, marginTop: 8 },
+  bentoValue: {
+    fontFamily: fontFamily.headingExtraBold,
+    fontWeight: '800',
+    fontSize: 26,
+    lineHeight: 30,
+    color: colors.onSurface,
+    letterSpacing: -0.3,
+  },
+  bentoValueUnit: {
+    fontFamily: fontFamily.bodyMedium,
+    fontWeight: '500',
+    fontSize: 13,
+    color: colors.onSurfaceVariant,
+  },
+  bentoDelta: {
+    fontFamily: fontFamily.bodyBold,
+    fontWeight: '700',
+    fontSize: 13,
+    marginBottom: 3,
+  },
+  bentoSub: {
+    ...typography.labelSm,
+    color: colors.onSurfaceVariant,
+    marginTop: 4,
+  },
+  bentoEmpty: {
+    fontFamily: fontFamily.bodyMedium,
+    fontWeight: '500',
+    fontSize: 15,
+    color: colors.onSurfaceVariant,
+    marginTop: 8,
+  },
+  spark: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: 32, marginTop: 8 },
+  sparkBar: {
+    flex: 1,
+    backgroundColor: colors.infoBg,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
+    minHeight: 4,
+  },
+  sparkBarLast: { backgroundColor: colors.primary },
+  caloriesRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+
+  // ── Talk to Maya card ──
+  mayaCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    padding: 16,
+    marginTop: spacing.stackLg,
+    ...shadow('md'),
+  },
+  mayaLeft: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
+  mayaTextCol: { flex: 1 },
+  mayaTitle: {
+    fontFamily: fontFamily.headingBold,
+    fontWeight: '700',
+    fontSize: 17,
+    color: colors.onSurface,
+  },
+  mayaSub: {
+    fontFamily: fontFamily.body,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.onSurfaceVariant,
+    marginTop: 2,
+  },
+
+  // ── Muscle shield ──
+  muscleShield: {
+    width: 48,
+    height: 48,
+    borderRadius: radii.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Quick Add row ──
+  quickAddSection: { marginTop: spacing.stackLg, marginBottom: spacing.stackSm },
+  quickAddHeading: {
+    ...typography.labelSm,
+    color: colors.onSurfaceVariant,
+    letterSpacing: 1.5,
+    marginBottom: 12,
+    marginLeft: 2,
+  },
+  quickAddRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  quickAddItem: { alignItems: 'center', gap: 8, flex: 1 },
+  quickAddCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadow('sm'),
+  },
+  quickAddLabel: {
+    ...typography.labelSm,
+    color: colors.onSurface,
+    fontWeight: '600',
+  },
 
   medDisclaimer: {
     backgroundColor: colors.warningBg, borderRadius: radii.md, padding: 10,
